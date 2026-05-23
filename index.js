@@ -42,6 +42,7 @@ const downloadsIpc = require("./src/ipc/downloads");
 const subtitlesIpc = require("./src/ipc/subtitles");
 const allmangaIpc = require("./src/ipc/allmanga");
 const playerIpc = require("./src/ipc/player");
+const { safeHandle } = require("./src/ipc/safeHandle");
 
 // -- Ad/tracker block list -----------------------------------------------------
 const BLOCKED_HOSTS = [
@@ -324,7 +325,7 @@ playerIpc.register(getMainWindow, {
 blockStats.init(getMainWindow);
 
 // get-block-stats lives with its data
-ipcMain.handle("get-block-stats", () => blockStats.getBlockStats());
+safeHandle("get-block-stats", () => blockStats.getBlockStats());
 
 // -- Player memory cleanup ---------------------------------------------
 // Called by MoviePage / TVPage on component unmount.
@@ -366,7 +367,7 @@ ipcMain.on("player-stopped", () => {
 // -- Wyzie API Key Redemption Window ------------------------------------------
 // Opens https://sub.wyzie.io/redeem in a child BrowserWindow, watches the DOM
 // for the api-key-display element, extracts the key, and sends it back.
-ipcMain.handle("wyzie-open-redeem", async () => {
+safeHandle("wyzie-open-redeem", async () => {
   return new Promise((resolve) => {
     const { BrowserWindow: BW, session: electronSession } = require("electron");
     // Use a non-persistent session so NO cookies/storage are saved after the window closes
@@ -441,7 +442,7 @@ ipcMain.handle("wyzie-open-redeem", async () => {
 });
 
 // -- Wyzie API Key Validation --------------------------------------------------
-ipcMain.handle("wyzie-validate-key", async (_, key) => {
+safeHandle("wyzie-validate-key", async (_, key) => {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
@@ -481,7 +482,7 @@ ipcMain.handle(
 let pipWindow = null;
 const getPipWindow = () => pipWindow;
 
-ipcMain.handle("open-pip-window", (_, { url, title }) => {
+safeHandle("open-pip-window", (_, { url, title }) => {
   if (!url || url === "about:blank") return { ok: false, reason: "no-url" };
 
   // Guarantee tracker/ad blocking is active in persist:player before any load
@@ -552,11 +553,11 @@ ipcMain.handle("open-pip-window", (_, { url, title }) => {
   return { ok: true };
 });
 
-ipcMain.handle("close-pip-window", () => {
+safeHandle("close-pip-window", () => {
   if (pipWindow && !pipWindow.isDestroyed()) pipWindow.close();
 });
 
-ipcMain.handle("get-pip-webcontents-id", () => {
+safeHandle("get-pip-webcontents-id", () => {
   if (pipWindow && !pipWindow.isDestroyed()) return pipWindow.webContents.id;
   return null;
 });

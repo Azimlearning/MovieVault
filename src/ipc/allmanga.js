@@ -4,8 +4,10 @@
 // Clock/source endpoints are fetched with plain HTTPS (no CF protection).
 
 const { ipcMain } = require("electron");
+const { spawnSync } = require("child_process");
 const https = require("https");
 const http = require("http");
+const { safeHandle } = require("./safeHandle");
 const crypto = require("crypto");
 
 // ── AllAnime hex cipher (from ani-cli) ────────────────────────────────────────
@@ -767,7 +769,7 @@ function getPlayerServer() {
 // ── IPC registration ──────────────────────────────────────────────────────────
 
 function register() {
-  ipcMain.handle("set-player-video", async (_, { url, referer, startTime }) => {
+  safeHandle("set-player-video", async (_, { url, referer, startTime }) => {
     _currentVideoUrl = url;
     _currentVideoReferer = referer || "https://allmanga.to";
     _currentVideoStartTime = startTime || 0;
@@ -775,7 +777,7 @@ function register() {
     return { playerUrl: `http://127.0.0.1:${server.address().port}/player` };
   });
 
-  ipcMain.handle(
+  safeHandle(
     "resolve-allmanga",
     async (
       _,
@@ -934,7 +936,7 @@ function register() {
     },
   );
 
-  ipcMain.handle("debug-allmanga", async (_, args) => {
+  safeHandle("debug-allmanga", async (_, args) => {
     try {
       if (args.path) {
         const url = args.path.startsWith("http")

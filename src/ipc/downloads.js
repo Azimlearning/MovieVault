@@ -9,6 +9,7 @@ const fs = require("fs");
 const https = require("https");
 const http = require("http");
 const os = require("os");
+const { safeHandle } = require("./safeHandle");
 
 // ── Download store ────────────────────────────────────────────────────────────
 
@@ -181,7 +182,7 @@ function register(getMainWindow) {
   _getMainWindow = getMainWindow;
 
   // ── downloader binary detection ──────────────────────────────────────────
-  ipcMain.handle("check-downloader", (_, folderPath) => {
+  safeHandle("check-downloader", (_, folderPath) => {
     if (!folderPath) return { exists: false, reason: "no_folder" };
     let entries;
     try {
@@ -217,7 +218,7 @@ function register(getMainWindow) {
   });
 
   // ── start download ────────────────────────────────────────────────────────
-  ipcMain.handle(
+  safeHandle(
     "run-download",
     (
       _,
@@ -717,9 +718,9 @@ function register(getMainWindow) {
     },
   );
 
-  ipcMain.handle("get-downloads", () => downloads);
+  safeHandle("get-downloads", () => downloads);
 
-  ipcMain.handle("delete-download", (_, { id, filePath }) => {
+  safeHandle("delete-download", (_, { id, filePath }) => {
     try {
       const dlEntry = downloads.find((d) => d.id === id);
       if (activeProcs.has(id)) {
@@ -748,7 +749,7 @@ function register(getMainWindow) {
     }
   });
 
-  ipcMain.handle("delete-all-downloads", async () => {
+  safeHandle("delete-all-downloads", async () => {
     try {
       let deleted = 0,
         errors = 0;
@@ -777,7 +778,7 @@ function register(getMainWindow) {
     }
   });
 
-  ipcMain.handle("get-downloads-size", async () => {
+  safeHandle("get-downloads-size", async () => {
     let bytes = 0;
     await Promise.all(
       downloads.map(async (dl) => {
@@ -791,12 +792,12 @@ function register(getMainWindow) {
     return { bytes };
   });
 
-  ipcMain.handle("show-in-folder", (_, filePath) => {
+  safeHandle("show-in-folder", (_, filePath) => {
     if (filePath && fs.existsSync(filePath)) shell.showItemInFolder(filePath);
     else shell.openPath(path.dirname(filePath || ""));
   });
 
-  ipcMain.handle("file-exists", (_, filePath) => {
+  safeHandle("file-exists", (_, filePath) => {
     try {
       return fs.existsSync(filePath);
     } catch {
@@ -804,7 +805,7 @@ function register(getMainWindow) {
     }
   });
 
-  ipcMain.handle("pick-folder", async () => {
+  safeHandle("pick-folder", async () => {
     const mw = getMainWindow();
     if (!mw) return null;
     const result = await dialog.showOpenDialog(mw, {
@@ -814,10 +815,10 @@ function register(getMainWindow) {
     return result.canceled ? null : result.filePaths[0];
   });
 
-  ipcMain.handle("open-external", (_, url) => {
+  safeHandle("open-external", (_, url) => {
     shell.openExternal(url);
   });
-  ipcMain.handle("open-path", (_, filePath) => {
+  safeHandle("open-path", (_, filePath) => {
     // If the path points to a file (e.g. an .asar archive or an executable),
     // open its containing folder instead so the OS file manager actually shows something
     try {
@@ -832,7 +833,7 @@ function register(getMainWindow) {
       shell.openPath(filePath);
     }
   });
-  ipcMain.handle("get-install-path", () => {
+  safeHandle("get-install-path", () => {
     if (process.env.APPIMAGE) {
       return path.dirname(process.env.APPIMAGE);
     }
@@ -844,7 +845,7 @@ function register(getMainWindow) {
     return app.getAppPath();
   });
 
-  ipcMain.handle("scan-directory", (_, folderPath) => {
+  safeHandle("scan-directory", (_, folderPath) => {
     try {
       if (!folderPath || !fs.existsSync(folderPath)) return [];
       const VIDEO_EXTS = [
@@ -901,7 +902,7 @@ function register(getMainWindow) {
     }
   });
 
-  ipcMain.handle("clear-app-cache", async () => {
+  safeHandle("clear-app-cache", async () => {
     try {
       const sessions = [
         session.defaultSession,
@@ -922,7 +923,7 @@ function register(getMainWindow) {
     }
   });
 
-  ipcMain.handle("clear-watch-data", async () => {
+  safeHandle("clear-watch-data", async () => {
     try {
       const vs = session.fromPartition("persist:player");
       await vs.clearStorageData();
@@ -933,7 +934,7 @@ function register(getMainWindow) {
     }
   });
 
-  ipcMain.handle("get-cache-size", async () => {
+  safeHandle("get-cache-size", async () => {
     try {
       const sessions = [
         session.defaultSession,
@@ -947,7 +948,7 @@ function register(getMainWindow) {
     }
   });
 
-  ipcMain.handle("reset-app", async () => {
+  safeHandle("reset-app", async () => {
     try {
       const sessions = [
         session.defaultSession,

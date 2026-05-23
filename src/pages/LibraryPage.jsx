@@ -5,6 +5,7 @@ import { EyeIcon, WatchedIcon } from "../components/Icons";
 import { useRatings, getRatingForItem } from "../utils/useRatings";
 import { isRestricted } from "../utils/ageRating";
 import { storage, STORAGE_KEYS } from "../utils/storage";
+import AsyncBoundary from "../components/AsyncBoundary";
 
 export default function LibraryPage({
   history,
@@ -48,6 +49,23 @@ export default function LibraryPage({
     [getRating, ageLimitSetting],
   );
 
+  const libraryState = useMemo(() => {
+    if (history.length === 0 && saved.length === 0 && inProgress.length === 0) {
+      return "empty";
+    }
+    return null;
+  }, [history.length, saved.length, inProgress.length]);
+
+  const emptyComponent = (
+    <div className="empty-state">
+      <EyeIcon />
+      <h3>Nothing here yet</h3>
+      <p>
+        Start watching a movie or series and your history will appear here.
+      </p>
+    </div>
+  );
+
   return (
     <div className="fade-in">
       <div className="library-header">
@@ -57,139 +75,131 @@ export default function LibraryPage({
         </div>
       </div>
 
-      {inProgress.length > 0 && (
-        <div className="library-section">
-          <div className="library-section-title">Continue Watching</div>
-          <div className="cards-grid">
-            {inProgress.map((item, i) => {
-              const pk =
-                item.media_type === "movie"
-                  ? `movie_${item.id}`
-                  : `tv_${item.id}_s${item.season}e${item.episode}`;
-              const r = getRating(item);
-              const restr = itemRestricted(item);
-              return (
-                <MediaCard
-                  key={pk}
-                  item={item}
-                  onClick={() => onSelect(item)}
-                  progress={progress[pk] || 0}
-                  watched={watched}
-                  onMarkWatched={onMarkWatched}
-                  onMarkUnwatched={onMarkUnwatched}
-                  ageRating={r.cert}
-                  restricted={restr}
-                />
-              );
-            })}
+      <AsyncBoundary state={libraryState} emptyComponent={emptyComponent}>
+        {inProgress.length > 0 && (
+          <div className="library-section">
+            <div className="library-section-title">Continue Watching</div>
+            <div className="cards-grid">
+              {inProgress.map((item, i) => {
+                const pk =
+                  item.media_type === "movie"
+                    ? `movie_${item.id}`
+                    : `tv_${item.id}_s${item.season}e${item.episode}`;
+                const r = getRating(item);
+                const restr = itemRestricted(item);
+                return (
+                  <MediaCard
+                    key={pk}
+                    item={item}
+                    onClick={() => onSelect(item)}
+                    progress={progress[pk] || 0}
+                    watched={watched}
+                    onMarkWatched={onMarkWatched}
+                    onMarkUnwatched={onMarkUnwatched}
+                    ageRating={r.cert}
+                    restricted={restr}
+                  />
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {saved.length > 0 && (
-        <div className="library-section">
-          <div className="library-section-title">
-            Watchlist ({saved.length})
-            {sort !== "manual" && (
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 400,
-                  color: "var(--text3)",
-                  marginLeft: 10,
-                }}
-              >
-                {sortLabels[sort]}
-              </span>
-            )}
-          </div>
-          <div className="cards-grid">
-            {saved.map((item) => {
-              const r = getRating(item);
-              const restr = itemRestricted(item);
-              return (
-                <MediaCard
-                  key={`${item.media_type}_${item.id}`}
-                  item={item}
-                  onClick={() => onSelect(item)}
-                  watched={watched}
-                  onMarkWatched={onMarkWatched}
-                  onMarkUnwatched={onMarkUnwatched}
-                  ageRating={r.cert}
-                  restricted={restr}
-                />
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {history.length > 0 && (
-        <div className="library-section">
-          <div className="library-section-title">Watch History</div>
-          <div className="history-rows">
-            {history.map((item, i) => {
-              const pk =
-                item.media_type === "movie"
-                  ? `movie_${item.id}`
-                  : `tv_${item.id}_s${item.season}e${item.episode}`;
-              const isWatched = !!watched?.[pk];
-              return (
-                <div
-                  key={pk}
-                  className="history-row"
-                  onClick={() => onSelect(item)}
+        {saved.length > 0 && (
+          <div className="library-section">
+            <div className="library-section-title">
+              Watchlist ({saved.length})
+              {sort !== "manual" && (
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 400,
+                    color: "var(--text3)",
+                    marginLeft: 10,
+                  }}
                 >
-                  <div className="history-thumb">
-                    {item.poster_path && (
-                      <img src={imgUrl(item.poster_path, "w92")} alt="" />
-                    )}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 500,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
-                      }}
-                    >
-                      {item.title}
-                      {isWatched && <WatchedIcon size={16} />}
-                    </div>
-                    <div style={{ fontSize: 12, color: "var(--text3)" }}>
-                      {item.media_type === "tv" &&
-                        item.season &&
-                        `S${item.season}E${item.episode} · `}
-                      {new Date(item.watchedAt).toLocaleDateString("en-US", {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      })}
-                    </div>
-                  </div>
-                  <span
-                    className={`search-result-type ${item.media_type === "tv" ? "type-tv" : "type-movie"}`}
-                  >
-                    {item.media_type === "tv" ? "Series" : "Movie"}
-                  </span>
-                </div>
-              );
-            })}
+                  {sortLabels[sort]}
+                </span>
+              )}
+            </div>
+            <div className="cards-grid">
+              {saved.map((item) => {
+                const r = getRating(item);
+                const restr = itemRestricted(item);
+                return (
+                  <MediaCard
+                    key={`${item.media_type}_${item.id}`}
+                    item={item}
+                    onClick={() => onSelect(item)}
+                    watched={watched}
+                    onMarkWatched={onMarkWatched}
+                    onMarkUnwatched={onMarkUnwatched}
+                    ageRating={r.cert}
+                    restricted={restr}
+                  />
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {history.length === 0 && saved.length === 0 && (
-        <div className="empty-state">
-          <EyeIcon />
-          <h3>Nothing here yet</h3>
-          <p>
-            Start watching a movie or series and your history will appear here.
-          </p>
-        </div>
-      )}
+        {history.length > 0 && (
+          <div className="library-section">
+            <div className="library-section-title">Watch History</div>
+            <div className="history-rows">
+              {history.map((item, i) => {
+                const pk =
+                  item.media_type === "movie"
+                    ? `movie_${item.id}`
+                    : `tv_${item.id}_s${item.season}e${item.episode}`;
+                const isWatched = !!watched?.[pk];
+                return (
+                  <div
+                    key={pk}
+                    className="history-row"
+                    onClick={() => onSelect(item)}
+                  >
+                    <div className="history-thumb">
+                      {item.poster_path && (
+                        <img src={imgUrl(item.poster_path, "w92")} alt="" />
+                      )}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 500,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
+                        {item.title}
+                        {isWatched && <WatchedIcon size={16} />}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--text3)" }}>
+                        {item.media_type === "tv" &&
+                          item.season &&
+                          `S${item.season}E${item.episode} · `}
+                        {new Date(item.watchedAt).toLocaleDateString("en-US", {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </div>
+                    </div>
+                    <span
+                      className={`search-result-type ${item.media_type === "tv" ? "type-tv" : "type-movie"}`}
+                    >
+                      {item.media_type === "tv" ? "Series" : "Movie"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </AsyncBoundary>
     </div>
   );
 }

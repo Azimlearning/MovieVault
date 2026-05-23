@@ -7,6 +7,7 @@ import {
   useCallback,
   memo,
 } from "react";
+import AsyncBoundary from "../components/AsyncBoundary";
 import {
   EPISODE_GROUP_IDS,
   applyEpisodeMapping,
@@ -365,6 +366,8 @@ export default function TVPage({
   onGoToDownloads,
 }) {
   const [details, setDetails] = useState(null);
+  const [detailsError, setDetailsError] = useState(null);
+  const [seasonError, setSeasonError] = useState(null);
   const [seasonData, setSeasonData] = useState(null);
   const [failedSeasons, setFailedSeasons] = useState(() => new Set()); // season numbers which give 404 on TMDB
   const [selectedSeason, setSelectedSeason] = useState(() =>
@@ -423,6 +426,41 @@ export default function TVPage({
   const webviewRef = useRef(null);
   // Always-current refs for interval callbacks, avoids stale closures without restarting the interval
   const saveProgressRef = useRef(saveProgress);
+
+  const detailState = useMemo(() => {
+    if (loading) return "loading";
+    if (detailsError) return { loading: false, error: detailsError };
+    return null;
+  }, [loading, detailsError]);
+
+  const seasonState = useMemo(() => {
+    if (loadingSeason) return "loading";
+    if (seasonError) return { loading: false, error: seasonError };
+    if (!loadingSeason && !(seasonData?.episodes || episodeGroupCurrentEpisodes?.length)) {
+      return "empty";
+    }
+    return null;
+  }, [loadingSeason, seasonError, seasonData, episodeGroupCurrentEpisodes]);
+
+  const allMangaState = useMemo(() => {
+    if (resolvingUrl) return "loading";
+    if (resolveError) {
+      return {
+        loading: false,
+        error: {
+          code: "SCRAPER_PARSE_FAIL",
+          message: resolveError,
+        },
+      };
+    }
+    return null;
+  }, [resolvingUrl, resolveError]);
+
+  const handleRetryAllManga = useCallback(() => {
+    setResolvedPlayerUrl(null);
+    setResolveError(null);
+    setResolvingUrl(false);
+  }, []);
   saveProgressRef.current = saveProgress;
   const onMarkWatchedRef = useRef(onMarkWatched);
   onMarkWatchedRef.current = onMarkWatched;
@@ -464,13 +502,15 @@ export default function TVPage({
   const durationRef = useRef(0); // tracked for AniSkip progress bar markers
   const seekBackCooldownRef = useRef(0);
 
-  useEffect(() => {
+  const fetchDetails = useCallback(() => {
     let mounted = true;
     setLoading(true);
+    setDetailsError(null);
     tmdbFetch(`/tv/${item.id}`, apiKey)
       .then((d) => {
         if (!mounted) return;
         setDetails(d);
+        setDetailsError(null);
         // Only fall back to first season when no specific season was requested
         if (item.season == null) {
           const first =
@@ -478,8 +518,13 @@ export default function TVPage({
           if (first) setSelectedSeason(first.season_number);
         }
       })
-      .catch(() => {
-        if (mounted) setDetails(item);
+      .catch((err) => {
+        if (mounted) {
+          setDetailsError({
+            code: err.code || "UNKNOWN_ERROR",
+            message: err.message || "Failed to load TV show details",
+          });
+        }
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -488,6 +533,10 @@ export default function TVPage({
       mounted = false;
     };
   }, [item.id, apiKey]);
+
+  useEffect(() => {
+    fetchDetails();
+  }, [fetchDetails]);
 
   // ── Fetch episode group mapping if this show has one ─────────────────────
   useEffect(() => {
@@ -542,7 +591,7 @@ export default function TVPage({
     };
   }, [item.id, apiKey, ratingCountry]);
 
-  useEffect(() => {
+  const fetchSeasonData = useCallback(() => {
     if (!apiKey || !item.id) return;
     // Episode group data already contains all episodes -> no TMDB season fetch
     if (episodeGroupData) {
@@ -550,9 +599,11 @@ export default function TVPage({
       setPlaying(false);
       setSeasonData(null);
       setLoadingSeason(false);
+      setSeasonError(null);
       return;
     }
     setLoadingSeason(true);
+    setSeasonError(null);
     setSelectedEp(null);
     setPlaying(false);
     setSeasonData(null); // clear stale episodes immediately
@@ -564,11 +615,18 @@ export default function TVPage({
     let mounted = true;
     tmdbFetch(`/tv/${item.id}/season/${tmdbSeasonToFetch}`, apiKey)
       .then((d) => {
-        if (mounted) setSeasonData(d);
+        if (mounted) {
+          setSeasonData(d);
+          setSeasonError(null);
+        }
       })
-      .catch(() => {
+      .catch((err) => {
         if (mounted) {
           setSeasonData(null);
+          setSeasonError({
+            code: err.code || "UNKNOWN_ERROR",
+            message: err.message || `Failed to load Season ${selectedSeason} details`,
+          });
           // Record this season as unavailable (e.g. TMDB has no episode data for it)
           if (selectedSeason === 0) {
             setFailedSeasons((prev) => new Set([...prev, selectedSeason]));
@@ -581,7 +639,11 @@ export default function TVPage({
     return () => {
       mounted = false;
     };
-  }, [item.id, selectedSeason, apiKey, anilistSeasons]);
+  }, [item.id, selectedSeason, apiKey, anilistSeasons, episodeGroupData, isAnime, tmdbSeasons]);
+
+  useEffect(() => {
+    fetchSeasonData();
+  }, [fetchSeasonData]);
 
   // Reset m3u8 URL, subtitle URL and source menu whenever the series, episode, or source changes
   useEffect(() => {
@@ -1418,14 +1480,8 @@ export default function TVPage({
 
   return (
     <div className="fade-in">
-      {loading && (
-        <div className="loader">
-          <div className="spinner" />
-        </div>
-      )}
-      {!loading && (
-        <>
-          <div className="detail-hero">
+      <AsyncBoundary state={detailState} onRetry={fetchDetails}>
+        <div className="detail-hero">
             <div
               className="detail-bg"
               style={{
@@ -1665,13 +1721,41 @@ export default function TVPage({
                     </button>
                   </div>
                 )}
-                <webview
-                  ref={webviewRef}
-                  src={
-                    pipOpen
-                      ? "about:blank"
-                      : isAsync
-                        ? resolvedPlayerUrl || "about:blank"
+                {isAsync ? (
+                  <AsyncBoundary state={allMangaState} onRetry={handleRetryAllManga}>
+                    <webview
+                      ref={webviewRef}
+                      src={
+                        pipOpen
+                          ? "about:blank"
+                          : resolvedPlayerUrl || "about:blank"
+                      }
+                      partition="persist:player"
+                      allowpopups="false"
+                      sandbox="allow-scripts allow-same-origin allow-forms"
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        width: "100%",
+                        height: "100%",
+                        border: "none",
+                        outline: "none",
+                        boxShadow: "none",
+                        background: "black",
+                        visibility:
+                          webviewLoading || !resolvedPlayerUrl
+                            ? "hidden"
+                            : "visible",
+                      }}
+                      tabIndex={-1}
+                    />
+                  </AsyncBoundary>
+                ) : (
+                  <webview
+                    ref={webviewRef}
+                    src={
+                      pipOpen
+                        ? "about:blank"
                         : getSourceUrl(
                             playerSource,
                             "tv",
@@ -1679,26 +1763,24 @@ export default function TVPage({
                             playerEp.season,
                             playerEp.episode,
                           )
-                  }
-                  partition="persist:player"
-                  allowpopups="false"
-                  sandbox="allow-scripts allow-same-origin allow-forms"
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    width: "100%",
-                    height: "100%",
-                    border: "none",
-                    outline: "none",
-                    boxShadow: "none",
-                    background: "black",
-                    visibility:
-                      webviewLoading || (isAsync && !resolvedPlayerUrl)
-                        ? "hidden"
-                        : "visible",
-                  }}
-                  tabIndex={-1}
-                />
+                    }
+                    partition="persist:player"
+                    allowpopups="false"
+                    sandbox="allow-scripts allow-same-origin allow-forms"
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      border: "none",
+                      outline: "none",
+                      boxShadow: "none",
+                      background: "black",
+                      visibility: webviewLoading ? "hidden" : "visible",
+                    }}
+                    tabIndex={-1}
+                  />
+                )}
                 {/* Left-side overlay button group, flex row, no fixed px offsets */}
                 <div className="player-overlay-group">
                   <button
@@ -2068,13 +2150,8 @@ export default function TVPage({
                 </span>
               </div>
             )}
-            {loadingSeason && (
-              <div className="loader">
-                <div className="spinner" />
-              </div>
-            )}
-            {!loadingSeason &&
-              (seasonData?.episodes || episodeGroupCurrentEpisodes?.length) && (
+            <AsyncBoundary state={seasonState} onRetry={fetchSeasonData}>
+              {(seasonData?.episodes || episodeGroupCurrentEpisodes?.length) && (
                 <div className="episodes-grid">
                   {currentSeasonEpisodes.map((ep) => {
                     const pk = `tv_${item.id}_s${selectedSeason}e${ep.episode_number}`;
@@ -2098,9 +2175,9 @@ export default function TVPage({
                   })}
                 </div>
               )}
+            </AsyncBoundary>
           </div>
-        </>
-      )}
+      </AsyncBoundary>
 
       {showTrailer && trailerKey && (
         <TrailerModal

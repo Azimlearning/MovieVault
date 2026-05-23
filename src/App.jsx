@@ -68,7 +68,20 @@ export default function App() {
   const [trending, setTrending] = useState([]);
   const [trendingTV, setTrendingTV] = useState([]);
   const [loadingHome, setLoadingHome] = useState(false);
+  const [errorHome, setErrorHome] = useState(null);
   const [offline, setOffline] = useState(() => !navigator.onLine);
+
+  // ── Network offline detection ──────────────────────────────────────────────
+  useEffect(() => {
+    const handleOnline = () => setOffline(false);
+    const handleOffline = () => setOffline(true);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   // ── Scheduled backup: run on startup if due ─────────────────────────────────
   useEffect(() => {
@@ -478,9 +491,11 @@ export default function App() {
     ) {
       setTrending(cached.movies || []);
       setTrendingTV(cached.tv || []);
+      setErrorHome(null);
       return;
     }
     setLoadingHome(true);
+    setErrorHome(null);
     Promise.all([
       tmdbFetch("/trending/movie/week", apiKey),
       tmdbFetch("/trending/tv/week", apiKey),
@@ -492,7 +507,12 @@ export default function App() {
         setTrendingTV(tv);
         storage.set("trendingCache", { movies, tv, ts: Date.now(), lang: currentLang });
       })
-      .catch(() => {})
+      .catch((err) => {
+        setErrorHome({
+          code: err.code || "UNKNOWN_ERROR",
+          message: err.message || "Failed to load trending items",
+        });
+      })
       .finally(() => setLoadingHome(false));
   }, [apiKey]);
 
@@ -854,6 +874,11 @@ export default function App() {
         />
 
         <div className="main">
+          {offline && (
+            <div className="api-status-banner api-status-warn">
+              <span>📡 You're offline — showing cached content</span>
+            </div>
+          )}
           {/* ── API key status banner ── */}
           {/* Suspense boundary: lazy page chunks are fetched on first visit */}
           {apiKeyStatus === "invalid_token" && (
@@ -902,6 +927,7 @@ export default function App() {
                 trending={trending}
                 trendingTV={trendingTV}
                 loading={loadingHome}
+                error={errorHome}
                 onSelect={handleSelectResult}
                 progress={progress}
                 inProgress={inProgress}

@@ -6,6 +6,7 @@
 const { app, ipcMain, safeStorage } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const { safeHandle } = require("./safeHandle");
 
 // ── Secure key/value store ────────────────────────────────────────────────────
 // Falls back to plain base64 when OS encryption is unavailable (rare Linux).
@@ -167,9 +168,9 @@ function shouldRunScheduledBackup(settings) {
 // ── IPC registration ──────────────────────────────────────────────────────────
 
 function register() {
-  ipcMain.handle("get-app-version", () => app.getVersion());
+  safeHandle("get-app-version", () => app.getVersion());
 
-  ipcMain.handle("secure-store-get", (_, key) => {
+  safeHandle("secure-store-get", (_, key) => {
     try {
       return { ok: true, value: secureStoreGet(key) };
     } catch {
@@ -177,7 +178,7 @@ function register() {
     }
   });
 
-  ipcMain.handle("secure-store-set", (_, { key, value }) => {
+  safeHandle("secure-store-set", (_, { key, value }) => {
     try {
       secureStoreSet(key, value);
       return { ok: true };
@@ -186,11 +187,11 @@ function register() {
     }
   });
 
-  ipcMain.handle("get-scheduled-backup-settings", () =>
+  safeHandle("get-scheduled-backup-settings", () =>
     loadScheduledBackupSettings(),
   );
 
-  ipcMain.handle("set-scheduled-backup-settings", (_, settings) => {
+  safeHandle("set-scheduled-backup-settings", (_, settings) => {
     try {
       saveScheduledBackupSettings(settings);
       return { ok: true };
@@ -199,7 +200,7 @@ function register() {
     }
   });
 
-  ipcMain.handle("perform-scheduled-backup", (_, { data, settings }) => {
+  safeHandle("perform-scheduled-backup", (_, { data, settings }) => {
     try {
       const backupDir = settings.path;
       if (!backupDir) return { ok: false, error: "No backup path set" };

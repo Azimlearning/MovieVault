@@ -7,6 +7,7 @@ import {
   useCallback,
   useMemo,
 } from "react";
+import AsyncBoundary from "../components/AsyncBoundary";
 import {
   tmdbFetch,
   imgUrl,
@@ -70,6 +71,8 @@ export default function MoviePage({
   onSelect,
 }) {
   const [details, setDetails] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [showDownload, setShowDownload] = useState(false);
   const [trailerKey, setTrailerKey] = useState(null);
@@ -103,12 +106,39 @@ export default function MoviePage({
   const [resolveError, setResolveError] = useState(null);
   const [collection, setCollection] = useState(null); // { name, parts }
   // Webview loading overlay
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [webviewLoading, setWebviewLoading] = useState(false);
   const [playerFullscreen, setPlayerFullscreen] = useState(false);
   // pipOpen=true: main webview shows about:blank, pop-out window has the real player
   const [pipOpen, setPipOpen] = useState(false);
   const pipUrlRef = useRef(null); // URL to restore when pop-out closes
   const pipWebContentsIdRef = useRef(null); // cached WebContents ID of the pop-out window
+
+  const detailState = useMemo(() => {
+    if (!details && detailsLoading) return "loading";
+    if (detailsError) return { loading: false, error: detailsError };
+    return null;
+  }, [details, detailsLoading, detailsError]);
+
+  const allMangaState = useMemo(() => {
+    if (resolvingUrl) return "loading";
+    if (resolveError) {
+      return {
+        loading: false,
+        error: {
+          code: "SCRAPER_PARSE_FAIL",
+          message: resolveError,
+        },
+      };
+    }
+    return null;
+  }, [resolvingUrl, resolveError]);
+
+  const handleRetryAllManga = useCallback(() => {
+    setResolvedPlayerUrl(null);
+    setResolveError(null);
+    setResolvingUrl(false);
+  }, []);
 
   // Derived: detect anime before any effects so effects can use it
   const isAnime = useMemo(
@@ -184,19 +214,36 @@ export default function MoviePage({
   // Timestamp until which we ignore reset detection (post-seekback cooldown)
   const seekBackCooldownRef = useRef(0);
 
-  useEffect(() => {
+  const fetchDetails = useCallback(() => {
     let mounted = true;
+    setDetailsLoading(true);
+    setDetailsError(null);
     tmdbFetch(`/movie/${item.id}`, apiKey)
       .then((d) => {
-        if (mounted) setDetails(d);
+        if (mounted) {
+          setDetails(d);
+          setDetailsError(null);
+        }
       })
-      .catch(() => {
-        if (mounted) setDetails(item);
+      .catch((err) => {
+        if (mounted) {
+          setDetailsError({
+            code: err.code || "UNKNOWN_ERROR",
+            message: err.message || "Failed to load movie details",
+          });
+        }
+      })
+      .finally(() => {
+        if (mounted) setDetailsLoading(false);
       });
     return () => {
       mounted = false;
     };
   }, [item.id, apiKey]);
+
+  useEffect(() => {
+    fetchDetails();
+  }, [fetchDetails]);
 
   useEffect(() => {
     let mounted = true;
@@ -626,7 +673,8 @@ export default function MoviePage({
 
   return (
     <div className="fade-in">
-      <div className="detail-hero">
+      <AsyncBoundary state={detailState} onRetry={fetchDetails}>
+        <div className="detail-hero">
         <div
           className="detail-bg"
           style={{
@@ -895,31 +943,52 @@ export default function MoviePage({
                 </button>
               </div>
             )}
-            <webview
-              ref={webviewRef}
-              src={
-                pipOpen
-                  ? "about:blank"
-                  : sourceIsAsync(playerSource)
-                    ? resolvedPlayerUrl || "about:blank"
+            {sourceIsAsync(playerSource) ? (
+              <AsyncBoundary state={allMangaState} onRetry={handleRetryAllManga}>
+                <webview
+                  ref={webviewRef}
+                  src={
+                    pipOpen
+                      ? "about:blank"
+                      : resolvedPlayerUrl || "about:blank"
+                  }
+                  partition="persist:player"
+                  allowpopups="false"
+                  sandbox="allow-scripts allow-same-origin allow-forms"
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    border: "none",
+                    visibility:
+                      webviewLoading || !resolvedPlayerUrl
+                        ? "hidden"
+                        : "visible",
+                  }}
+                />
+              </AsyncBoundary>
+            ) : (
+              <webview
+                ref={webviewRef}
+                src={
+                  pipOpen
+                    ? "about:blank"
                     : getSourceUrl(playerSource, "movie", item.id, null, null)
-              }
-              partition="persist:player"
-              allowpopups="false"
-              sandbox="allow-scripts allow-same-origin allow-forms"
-              style={{
-                position: "absolute",
-                inset: 0,
-                width: "100%",
-                height: "100%",
-                border: "none",
-                visibility:
-                  webviewLoading ||
-                  (sourceIsAsync(playerSource) && !resolvedPlayerUrl)
-                    ? "hidden"
-                    : "visible",
-              }}
-            />
+                }
+                partition="persist:player"
+                allowpopups="false"
+                sandbox="allow-scripts allow-same-origin allow-forms"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: "100%",
+                  height: "100%",
+                  border: "none",
+                  visibility: webviewLoading ? "hidden" : "visible",
+                }}
+              />
+            )}
             {/* Left-side overlay button group, flex row, no fixed px offsets */}
             <div className="player-overlay-group">
               <button
@@ -1169,6 +1238,7 @@ export default function MoviePage({
           tmdbId={item.id}
         />
       )}
+      </AsyncBoundary>
     </div>
   );
 }

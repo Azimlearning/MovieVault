@@ -7,12 +7,13 @@ const fs = require("fs");
 const https = require("https");
 const http = require("http");
 const os = require("os");
+const { safeHandle } = require("./safeHandle");
 
 let _updateAbortController = null;
 
 function register(getMainWindow, { writeSecretMigration }) {
   // ── Open file at specific timestamp in mpv / VLC ─────────────────────────
-  ipcMain.handle(
+  safeHandle(
     "open-path-at-time",
     (_, { filePath, seconds, subtitlePaths }) => {
       const sec = Math.floor(seconds || 0);
@@ -91,24 +92,24 @@ function register(getMainWindow, { writeSecretMigration }) {
   );
 
   // ── Window controls (custom Windows titlebar) ─────────────────────────────
-  ipcMain.handle("window-minimize", () => {
+  safeHandle("window-minimize", () => {
     const mw = getMainWindow();
     if (mw && !mw.isDestroyed()) mw.minimize();
   });
 
-  ipcMain.handle("window-toggle-maximize", () => {
+  safeHandle("window-toggle-maximize", () => {
     const mw = getMainWindow();
     if (!mw || mw.isDestroyed()) return;
     if (mw.isMaximized()) mw.unmaximize();
     else mw.maximize();
   });
 
-  ipcMain.handle("window-close", () => {
+  safeHandle("window-close", () => {
     const mw = getMainWindow();
     if (mw && !mw.isDestroyed()) mw.close();
   });
 
-  ipcMain.handle("window-is-maximized", () => {
+  safeHandle("window-is-maximized", () => {
     const mw = getMainWindow();
     return mw ? mw.isMaximized() : false;
   });
@@ -126,15 +127,15 @@ function register(getMainWindow, { writeSecretMigration }) {
     mwForEvents.on("leave-full-screen", () => pushMaximized(false));
   }
 
-  ipcMain.handle("quit-app", () => {
+  safeHandle("quit-app", () => {
     const mw = getMainWindow();
     if (mw && !mw.isDestroyed()) mw.close();
   });
 
-  ipcMain.handle("get-platform", () => process.platform);
+  safeHandle("get-platform", () => process.platform);
 
   // ── Get video duration via ffprobe ────────────────────────────────────────
-  ipcMain.handle("get-video-duration", async (_, filePath) => {
+  safeHandle("get-video-duration", async (_, filePath) => {
     if (!filePath) return { ok: false };
     const platform = process.platform;
 
@@ -196,7 +197,7 @@ function register(getMainWindow, { writeSecretMigration }) {
   });
 
   // ── Auto-updater ──────────────────────────────────────────────────────────
-  ipcMain.handle("detect-update-format", () => {
+  safeHandle("detect-update-format", () => {
     if (process.platform === "win32") return "exe";
     if (process.platform === "darwin") return "dmg";
     if (process.platform === "linux") {
@@ -208,7 +209,7 @@ function register(getMainWindow, { writeSecretMigration }) {
     return null;
   });
 
-  ipcMain.handle("download-and-install-update", async (_, { url, format }) => {
+  safeHandle("download-and-install-update", async (_, { url, format }) => {
     try {
 
       const ALLOWED_FORMATS = ["exe", "deb", "pacman", "dmg", "dmg_arm64", "appimage"];
@@ -465,7 +466,7 @@ function register(getMainWindow, { writeSecretMigration }) {
     }
   });
 
-  ipcMain.handle("cancel-update", () => {
+  safeHandle("cancel-update", () => {
     _updateAbortController?.abort();
   });
 
@@ -473,7 +474,7 @@ function register(getMainWindow, { writeSecretMigration }) {
   // executeJavaScript on a webview only reaches the top frame.
   // VidSrc / 2embed nest the player inside cross-origin iframes, so we iterate
   // all frames from the main process where same-origin restrictions don't apply.
-  ipcMain.handle("query-video-progress", async (_, webContentsId) => {
+  safeHandle("query-video-progress", async (_, webContentsId) => {
     try {
       const { webContents } = require("electron");
       const wc = webContents.fromId(webContentsId);

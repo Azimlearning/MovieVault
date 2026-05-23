@@ -70,6 +70,13 @@ function _releaseSlot() {
 }
 
 export const tmdbFetch = async (path, apiKey) => {
+  if (typeof window !== "undefined" && window.localStorage?.getItem("mock_tmdb_429") === "true") {
+    const err = new Error("TMDB Rate Limit Exceeded (MOCKED 429)");
+    err.code = "TMDB_RATE_LIMIT";
+    err.status = 429;
+    throw err;
+  }
+
   const localizedPath = withLanguage(path);
   const cacheKey = `${apiKey}|${localizedPath}`;
   const cached = _tmdbCache.get(cacheKey);
@@ -82,25 +89,36 @@ export const tmdbFetch = async (path, apiKey) => {
     res = await fetch(`${TMDB_BASE}${localizedPath}`, {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
-  } catch {
+  } catch (e) {
     _releaseSlot();
     _onUnreachable?.();
-    throw new Error("TMDB unreachable");
-  } finally {
-    // releaseSlot is called in the catch above for network errors;
-    // for successful responses it is called immediately below, before
-    // parsing, so the slot is held only during the actual in-flight
-    // request, not during res.json().
+    const err = new Error("TMDB unreachable");
+    err.code = "NETWORK_OFFLINE";
+    throw err;
   }
 
   _releaseSlot();
 
   if (res.status === 401 || res.status === 403) {
     _onAuthError?.();
-    throw new Error(`TMDB ${res.status}`);
+    const err = new Error(`TMDB Auth Error ${res.status}`);
+    err.code = "TMDB_AUTH_ERROR";
+    throw err;
   }
 
-  if (!res.ok) throw new Error(`TMDB ${res.status}`);
+  if (res.status === 429) {
+    const err = new Error("TMDB Rate Limit Exceeded");
+    err.code = "TMDB_RATE_LIMIT";
+    err.status = 429;
+    throw err;
+  }
+
+  if (!res.ok) {
+    const err = new Error(`TMDB Error ${res.status}`);
+    err.code = "UNKNOWN_ERROR";
+    throw err;
+  }
+  
   const data = await res.json();
   _tmdbCache.set(cacheKey, { data, expiresAt: Date.now() + TMDB_CACHE_TTL });
 
