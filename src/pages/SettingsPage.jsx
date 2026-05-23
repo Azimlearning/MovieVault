@@ -22,6 +22,7 @@ import {
 } from "../utils/homeLayout";
 import { collectBackupData, restoreBackupData } from "../utils/backup";
 import { formatBytes } from "../utils/storage";
+import { sourceQueue } from "../utils/sourceQueue";
 
 // ── Custom Select ─────────────────────────────────────────────────────────────
 function SettingsSelect({ value, onChange, options, style }) {
@@ -1578,6 +1579,154 @@ function TmdbLanguageSection() {
         </button>
         {saved && (
           <span style={{ fontSize: 13, color: "#48c774" }}>✓ Saved, cache cleared</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Video Sources & Failover Queue ────────────────────────────────────────────
+function VideoSourcesSection() {
+  const [sources, setSources] = useState(() => sourceQueue.getPriorityOrder());
+  const [timeout, setTimeoutVal] = useState(() => sourceQueue.getSourceTimeout());
+  const [reports, setReports] = useState(() => storage.get("brokenSourceReports") || []);
+  const [saved, setSaved] = useState(false);
+
+  const handleMoveUp = (index) => {
+    if (index === 0) return;
+    const newSources = [...sources];
+    const temp = newSources[index];
+    newSources[index] = newSources[index - 1];
+    newSources[index - 1] = temp;
+    setSources(newSources);
+  };
+
+  const handleMoveDown = (index) => {
+    if (index === sources.length - 1) return;
+    const newSources = [...sources];
+    const temp = newSources[index];
+    newSources[index] = newSources[index + 1];
+    newSources[index + 1] = temp;
+    setSources(newSources);
+  };
+
+  const handleSave = () => {
+    sourceQueue.savePriorityOrder(sources);
+    sourceQueue.saveSourceTimeout(timeout);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleClearReports = () => {
+    storage.remove("brokenSourceReports");
+    setReports([]);
+  };
+
+  const sourceLabels = {
+    vidsrc: "VidSrc",
+    videasy: "videasy",
+    "2embed": "2Embed"
+  };
+
+  return (
+    <div style={{ marginBottom: 40 }}>
+      <div className="settings-section-title">Video Sources &amp; Failover</div>
+      <div style={{ fontSize: 13, color: "var(--text3)", marginBottom: 16, lineHeight: 1.6 }}>
+        Configure the priority order of video streaming sources and failover timeout. When playing a title, we'll try each source in order until one succeeds.
+      </div>
+      
+      {/* Priority order list */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>
+          Source Priority Order
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 400 }}>
+          {sources.map((src, idx) => (
+            <div key={src} style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px" }}>
+              <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: "var(--text)" }}>
+                {sourceLabels[src] || src}
+              </span>
+              <button 
+                className="btn btn-ghost" 
+                style={{ padding: "4px 8px", fontSize: 12 }} 
+                disabled={idx === 0} 
+                onClick={() => handleMoveUp(idx)}
+              >
+                ▲ Up
+              </button>
+              <button 
+                className="btn btn-ghost" 
+                style={{ padding: "4px 8px", fontSize: 12 }} 
+                disabled={idx === sources.length - 1} 
+                onClick={() => handleMoveDown(idx)}
+              >
+                ▼ Down
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Timeout selector */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>
+          Failover Timeout
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="number"
+            min={5}
+            max={30}
+            className="apikey-input"
+            style={{ width: 80, marginBottom: 0 }}
+            value={timeout}
+            onChange={(e) => setTimeoutVal(Number(e.target.value))}
+          />
+          <span style={{ fontSize: 14, color: "var(--text2)" }}>seconds (per source)</span>
+        </div>
+        <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 6 }}>
+          Time to wait for a source to load before automatically falling over to the next one (5 to 30 seconds).
+        </div>
+      </div>
+
+      {/* Save Button */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 30 }}>
+        <button className="btn btn-primary" onClick={handleSave}>
+          Save Sources Settings
+        </button>
+        {saved && <span style={{ fontSize: 13, color: "#48c774" }}>✓ Saved</span>}
+      </div>
+
+      {/* Diagnostics Logs */}
+      <div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text2)" }}>
+            Diagnostics (Broken Source Reports)
+          </div>
+          {reports.length > 0 && (
+            <button className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }} onClick={handleClearReports}>
+              Clear Logs
+            </button>
+          )}
+        </div>
+        {reports.length === 0 ? (
+          <div style={{ fontSize: 13, color: "var(--text3)", fontStyle: "italic", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 16px" }}>
+            No broken source reports found.
+          </div>
+        ) : (
+          <div style={{ maxHeight: 200, overflowY: "auto", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+            {reports.map((report, idx) => (
+              <div key={idx} style={{ fontSize: 12, color: "var(--text2)", borderBottom: idx < reports.length - 1 ? "1px solid var(--border)" : "none", paddingBottom: idx < reports.length - 1 ? 8 : 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                  <span style={{ fontWeight: 600 }}>{report.title} ({report.type === "movie" ? "Movie" : `S${report.season} E${report.episode}`})</span>
+                  <span style={{ color: "var(--text3)" }}>{new Date(report.ts).toLocaleString()}</span>
+                </div>
+                <div style={{ color: "var(--text3)" }}>
+                  Sources tried: {report.sourcesTried?.join(" → ") || "None"}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>
@@ -3601,6 +3750,8 @@ export default function SettingsPage({
               ))}
             </div>
           </div>
+          <Divider />
+          <VideoSourcesSection />
         </div>
 
         {/* ══════════════════════════════════════════════════════════════════ */}

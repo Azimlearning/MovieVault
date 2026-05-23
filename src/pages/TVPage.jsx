@@ -8,6 +8,7 @@ import {
   memo,
 } from "react";
 import AsyncBoundary from "../components/AsyncBoundary";
+import { sourceQueue } from "../utils/sourceQueue";
 import {
   EPISODE_GROUP_IDS,
   applyEpisodeMapping,
@@ -414,6 +415,12 @@ export default function TVPage({
   const [pipOpen, setPipOpen] = useState(false);
   const pipUrlRef = useRef(null);
   const pipWebContentsIdRef = useRef(null); // cached WebContents ID of the pop-out window
+  
+  const [failoverQueue, setFailoverQueue] = useState([]);
+  const [currentQueueIndex, setCurrentQueueIndex] = useState(0);
+  const [loadingStatus, setLoadingStatus] = useState("");
+  const [failoverError, setFailoverError] = useState(false);
+  const timeoutRef = useRef(null);
   const [menuPos, setMenuPos] = useState(null);
   // AniSkip
   const [skipTimings, setSkipTimings] = useState(null); // { intro?, outro? }
@@ -1100,18 +1107,121 @@ export default function TVPage({
 
   // Attach webview load events so we know when the new source has painted.
   // Also poll for video duration so AniSkip markers appear without waiting for the 5s progress tick.
+  const handleFailover = useCallback(() => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    
+    setCurrentQueueIndex((prevIndex) => {
+      const nextIndex = prevIndex + 1;
+      if (nextIndex < failoverQueue.length) {
+        return nextIndex;
+      } else {
+        setFailoverError(true);
+        setWebviewLoading(false);
+        setLoadingStatus("");
+        return prevIndex;
+      }
+    });
+  }, [failoverQueue]);
+
+  // Initialize queue when playing starts
+  useEffect(() => {
+    if (!playing) {
+      setFailoverQueue([]);
+      setCurrentQueueIndex(0);
+      setLoadingStatus("");
+      setFailoverError(false);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      return;
+    }
+
+    const initialSource = storage.get("playerSource") || NON_ANIME_DEFAULT_SOURCE;
+    if (sourceIsAsync(initialSource)) {
+      setPlayerSource(initialSource);
+      return;
+    }
+
+    const q = sourceQueue.getQueue(item.id, selectedSeason, selectedEp?.episode_number);
+    setFailoverQueue(q);
+    setCurrentQueueIndex(0);
+    setPlayerSource(q[0]);
+    setFailoverError(false);
+  }, [playing, item.id, selectedSeason, selectedEp?.episode_number]);
+
+  // Handle active queue index changes
+  useEffect(() => {
+    if (!playing || failoverQueue.length === 0) return;
+    const currentSourceId = failoverQueue[currentQueueIndex];
+    if (!currentSourceId) return;
+
+    setPlayerSource(currentSourceId);
+    
+    const sourceLabel = PLAYER_SOURCES.find((s) => s.id === currentSourceId)?.label || currentSourceId;
+    setLoadingStatus(currentQueueIndex === 0 ? `Loading from ${sourceLabel}…` : `Trying ${sourceLabel}…`);
+
+    const timeoutSeconds = sourceQueue.getSourceTimeout();
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    
+    timeoutRef.current = setTimeout(() => {
+      console.log(`Source ${currentSourceId} timed out after ${timeoutSeconds}s.`);
+      handleFailover();
+    }, timeoutSeconds * 1000);
+
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, [playing, failoverQueue, currentQueueIndex, handleFailover]);
+
+  // Attach webview load events so we know when the new source has painted
   useEffect(() => {
     if (!playing) return;
     const wv = webviewRef.current;
     if (!wv) return;
-    const done = () => setWebviewLoading(false);
-    wv.addEventListener("did-finish-load", done);
-    wv.addEventListener("did-fail-load", done);
+    
+    const handleFinished = async () => {
+      if (sourceIsAsync(playerSource)) {
+        setWebviewLoading(false);
+        return;
+      }
+
+      try {
+        const title = await wv.executeJavaScript("document.title");
+        const bodyText = await wv.executeJavaScript("document.body.innerText");
+        
+        const isErrorTitle = title && (title.includes("502") || title.includes("504") || title.includes("Server Error") || title.includes("Cloudflare"));
+        const isErrorBody = bodyText && (bodyText.includes("502 Bad Gateway") || bodyText.includes("504 Gateway Timeout") || bodyText.includes("Server Error") || bodyText.includes("Cloudflare"));
+        
+        if (isErrorTitle || isErrorBody || !bodyText || bodyText.trim().length === 0) {
+          console.log(`Webview loaded successfully but contains error content:`, title, bodyText);
+          handleFailover();
+          return;
+        }
+      } catch (err) {
+        console.warn("Could not inspect webview page content:", err);
+      }
+
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      setWebviewLoading(false);
+      setLoadingStatus("");
+      
+      const activeSourceId = failoverQueue[currentQueueIndex] || playerSource;
+      sourceQueue.saveLastGoodSource(item.id, selectedSeason, selectedEp?.episode_number, activeSourceId);
+    };
+
+    const handleFailed = () => {
+      if (sourceIsAsync(playerSource)) {
+        setWebviewLoading(false);
+        return;
+      }
+      handleFailover();
+    };
+
+    wv.addEventListener("did-finish-load", handleFinished);
+    wv.addEventListener("did-fail-load", handleFailed);
 
     // Poll up to 30s for video duration (metadata may load after buffering starts)
-    let attempts = 0;
+    let durationAttempts = 0;
     const pollDuration = setInterval(async () => {
-      if (durationRef.current > 0 || attempts++ > 30) {
+      if (durationRef.current > 0 || durationAttempts++ > 30) {
         clearInterval(pollDuration);
         return;
       }
@@ -1121,7 +1231,6 @@ export default function TVPage({
         );
         if (dur) {
           durationRef.current = dur;
-          // let markers re-render
           setSkipTimings((t) => (t ? { ...t } : t));
           clearInterval(pollDuration);
         }
@@ -1129,11 +1238,11 @@ export default function TVPage({
     }, 1000);
 
     return () => {
-      wv.removeEventListener("did-finish-load", done);
-      wv.removeEventListener("did-fail-load", done);
+      wv.removeEventListener("did-finish-load", handleFinished);
+      wv.removeEventListener("did-fail-load", handleFailed);
       clearInterval(pollDuration);
     };
-  }, [playing, playerSource, item.id, selectedEp?.episode_number]);
+  }, [playing, playerSource, item.id, selectedSeason, selectedEp?.episode_number, failoverQueue, currentQueueIndex, handleFailover]);
 
   // ── AniSkip: fetch timings when episode changes ───────────────────────────
   useEffect(() => {
@@ -1644,7 +1753,7 @@ export default function TVPage({
                     <span style={{ fontSize: 14, color: "var(--text2)" }}>
                       {resolvingUrl
                         ? "Looking up episode on AllManga…"
-                        : `Loading ${PLAYER_SOURCES.find((s) => s.id === playerSource)?.label ?? "source"}…`}
+                        : loadingStatus || `Loading ${PLAYER_SOURCES.find((s) => s.id === playerSource)?.label ?? "source"}…`}
                     </span>
                   </div>
                 )}
@@ -1674,6 +1783,70 @@ export default function TVPage({
                     <span style={{ fontSize: 12, color: "var(--text3)" }}>
                       Try a different source, or switch sub/dub.
                     </span>
+                  </div>
+                )}
+                {/* Failover Error Card */}
+                {failoverError && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      zIndex: 10,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: "rgba(0,0,0,0.92)",
+                      gap: 16,
+                      padding: 24,
+                      borderRadius: "inherit",
+                    }}
+                  >
+                    <span style={{ fontSize: 48 }}>⚠️</span>
+                    <h3 style={{ margin: 0, fontSize: 18, color: "var(--text)" }}>All Sources Failed</h3>
+                    <p style={{ margin: 0, color: "var(--text3)", fontSize: 13, maxWidth: 400, textAlign: "center", lineHeight: 1.5 }}>
+                      We tried all available video sources but none resolved successfully.
+                    </p>
+                    <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => {
+                          setFailoverError(false);
+                          setWebviewLoading(true);
+                          setCurrentQueueIndex(0);
+                        }}
+                      >
+                        Retry
+                      </button>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => {
+                          const btn = document.querySelector(".player-source-btn");
+                          if (btn) btn.click();
+                        }}
+                      >
+                        Switch Source Manually
+                      </button>
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => {
+                          const logs = storage.get("brokenSourceReports") || [];
+                          logs.push({
+                            tmdbId: item.id,
+                            title: item.title || item.name,
+                            type: "tv",
+                            season: selectedSeason,
+                            episode: selectedEp?.episode_number,
+                            ts: Date.now(),
+                            sourcesTried: failoverQueue
+                          });
+                          storage.set("brokenSourceReports", logs);
+                          alert("Report saved to Settings -> Diagnostics.");
+                        }}
+                      >
+                        Report Broken
+                      </button>
+                    </div>
                   </div>
                 )}
                 {/* Pop-out active: main stream paused, pop-out has real player */}
@@ -1885,7 +2058,12 @@ export default function TVPage({
                         onClick={() => {
                           setShowSourceMenu(false);
                           if (src.id === playerSource) return;
+                          // Manual override: reset failover queue with just the selected source
+                          setFailoverQueue([src.id]);
+                          setCurrentQueueIndex(0);
                           setPlayerSource(src.id);
+                          setFailoverError(false);
+                          setWebviewLoading(true);
                           storage.set("playerSource", src.id);
                           setM3u8Url(null);
                           setInterceptedSubs([]);
