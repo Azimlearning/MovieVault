@@ -218,6 +218,7 @@ export default function MoviePage({
   const autoMarkedRef = useRef(false);
   // Tracks last known playback position, used to detect resolution-change resets
   const lastKnownTimeRef = useRef(0);
+  const hasSeekedSavedTimeRef = useRef(false);
   // Timestamp until which we ignore reset detection (post-seekback cooldown)
   const seekBackCooldownRef = useRef(0);
 
@@ -442,6 +443,7 @@ export default function MoviePage({
     autoMarkedRef.current = false;
     lastKnownTimeRef.current = 0;
     seekBackCooldownRef.current = 0;
+    hasSeekedSavedTimeRef.current = false;
   }, [item.id, isWatched]);
 
   // Show loader instantly when play starts
@@ -634,6 +636,26 @@ export default function MoviePage({
           if (result && result.duration > 0) {
             const ct = result.currentTime;
 
+            // Seek to saved position on first detection
+            if (!hasSeekedSavedTimeRef.current) {
+              const savedTime = storage.get("dlTime_" + progressKey) || 0;
+              if (savedTime > 5 && savedTime < result.duration - 15) {
+                hasSeekedSavedTimeRef.current = true;
+                try {
+                  await wv.executeJavaScript(`
+                    (() => {
+                      const v = document.querySelector('video')
+                      if (v) v.currentTime = ${savedTime}
+                    })()
+                  `);
+                  lastKnownTimeRef.current = savedTime;
+                  return;
+                } catch {}
+              } else {
+                hasSeekedSavedTimeRef.current = true;
+              }
+            }
+
             // ── Resolution-change reset detection ──────────────────────────
             // Videasy resets to 0 on quality change. We only seek back if:
             // - ct is near zero (≤5s)
@@ -669,7 +691,12 @@ export default function MoviePage({
               lastKnownTimeRef.current = ct;
             }
             const p = Math.floor((ct / result.duration) * 100);
-            saveProgressRef.current(progressKey, Math.min(p, 100));
+            saveProgressRef.current(progressKey, Math.min(p, 100), {
+              item: d,
+              position: ct,
+              duration: result.duration,
+              source: playerSource
+            });
             // Also persist actual seconds so DownloadsPage can show resume position
             storage.set("dlTime_" + progressKey, Math.floor(ct));
 

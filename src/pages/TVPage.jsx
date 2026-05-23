@@ -508,6 +508,7 @@ export default function TVPage({
   const lastKnownTimeRef = useRef(0);
   const durationRef = useRef(0); // tracked for AniSkip progress bar markers
   const seekBackCooldownRef = useRef(0);
+  const hasSeekedSavedTimeRef = useRef(false);
 
   const fetchDetails = useCallback(() => {
     let mounted = true;
@@ -1077,7 +1078,19 @@ export default function TVPage({
     lastKnownTimeRef.current = 0;
     seekBackCooldownRef.current = 0;
     durationRef.current = 0;
+    hasSeekedSavedTimeRef.current = false;
   }, [currentProgressKey]);
+
+  // Auto-play episode from continue watching / select result
+  useEffect(() => {
+    if (item.episode != null && currentSeasonEpisodes.length > 0 && !selectedEp && !playing) {
+      const epNum = Number(item.episode);
+      const ep = currentSeasonEpisodes.find((e) => e.episode_number === epNum);
+      if (ep) {
+        playEpisode(ep);
+      }
+    }
+  }, [item.episode, currentSeasonEpisodes, selectedEp, playing, playEpisode]);
 
   // Show loader instantly when playback starts
   useEffect(() => {
@@ -1394,6 +1407,26 @@ export default function TVPage({
             durationRef.current = result.duration;
             const ct = result.currentTime;
 
+            // Seek to saved position on first detection
+            if (!hasSeekedSavedTimeRef.current) {
+              const savedTime = storage.get("dlTime_" + currentProgressKey) || 0;
+              if (savedTime > 5 && savedTime < result.duration - 15) {
+                hasSeekedSavedTimeRef.current = true;
+                try {
+                  await wv.executeJavaScript(`
+                    (() => {
+                      const v = document.querySelector('video')
+                      if (v) v.currentTime = ${savedTime}
+                    })()
+                  `);
+                  lastKnownTimeRef.current = savedTime;
+                  return;
+                } catch {}
+              } else {
+                hasSeekedSavedTimeRef.current = true;
+              }
+            }
+
             // ── Resolution-change reset detection ──────────────────────────
             // Videasy resets to 0 on quality change. We only seek back if:
             // - ct is near zero (≤5s)
@@ -1429,19 +1462,61 @@ export default function TVPage({
               lastKnownTimeRef.current = ct;
             }
             const p = Math.floor((ct / result.duration) * 100);
-            saveProgressRef.current(currentProgressKey, Math.min(p, 100));
+            saveProgressRef.current(currentProgressKey, Math.min(p, 100), {
+              item,
+              season: selectedSeason,
+              episode: selectedEp?.episode_number,
+              position: ct,
+              duration: result.duration,
+              source: playerSource,
+              episodeTitle: selectedEp?.name
+            });
             // Also persist actual seconds so DownloadsPage can show resume position
             storage.set("dlTime_" + currentProgressKey, Math.floor(ct));
 
-            // Auto-mark watched when remaining time ≤ threshold
+            // Auto-mark watched when remaining time ≤ threshold or pct >= 90
             const remaining = result.duration - ct;
+            const pctVal = Math.min(p, 100);
             if (
               !autoMarkedRef.current &&
-              remaining <= watchedThreshold &&
+              (remaining <= watchedThreshold || pctVal >= 90) &&
               remaining >= 0
             ) {
               autoMarkedRef.current = true;
               onMarkWatchedRef.current?.(currentProgressKey);
+
+              // Find next episode for auto-progression
+              const currentEpNum = selectedEp?.episode_number;
+              const nextEp = currentSeasonEpisodes.find(e => e.episode_number === currentEpNum + 1);
+              if (nextEp) {
+                const nextKey = `tv_${item.id}_s${selectedSeason}e${nextEp.episode_number}`;
+                saveProgressRef.current(nextKey, 0, {
+                  item,
+                  season: selectedSeason,
+                  episode: nextEp.episode_number,
+                  position: 0,
+                  duration: 0,
+                  source: playerSource,
+                  isNextEpisode: true,
+                  episodeTitle: nextEp.name
+                });
+              } else {
+                const nextSeasonNum = selectedSeason + 1;
+                const nextSeason = seasons.find(s => s.season_number === nextSeasonNum);
+                if (nextSeason) {
+                  const nextKey = `tv_${item.id}_s${nextSeasonNum}e1`;
+                  saveProgressRef.current(nextKey, 0, {
+                    item,
+                    season: nextSeasonNum,
+                    episode: 1,
+                    position: 0,
+                    duration: 0,
+                    source: playerSource,
+                    isNextEpisode: true,
+                    episodeTitle: "Episode 1"
+                  });
+                }
+              }
             }
           }
         } catch {}
@@ -1461,6 +1536,11 @@ export default function TVPage({
     currentProgressKey,
     watchedThreshold,
     progressViaFrames,
+    currentSeasonEpisodes,
+    seasons,
+    selectedSeason,
+    selectedEp,
+    item,
   ]);
 
   // Skip backward/forward by N seconds via webview JS injection

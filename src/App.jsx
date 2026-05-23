@@ -58,6 +58,7 @@ export default function App() {
   const [progress, setProgress] = useState(() => storage.get("progress") || {});
   const [history, setHistory] = useState(() => storage.get("history") || []);
   const [watched, setWatched] = useState(() => storage.get("watched") || {});
+  const [watchHistory, setWatchHistory] = useState(() => storage.get("watchHistory") || {});
   const [toast, setToast] = useState(null);
   const [updateBanner, setUpdateBanner] = useState(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
@@ -755,7 +756,7 @@ export default function App() {
     });
   }, []); // no deps needed
 
-  const saveProgress = useCallback((key, pct) => {
+  const saveProgress = useCallback((key, pct, info = null) => {
     // Functional update - without this, TVPage's setInterval keeps spreading
     // the progress object from when the interval was created, overwriting
     // saves from other episodes (classic stale closure bug).
@@ -765,7 +766,46 @@ export default function App() {
       storage.set("progress", next);
       return next;
     });
+
+    if (info) {
+      setWatchHistory((prev) => {
+        const next = { ...prev };
+        next[key] = {
+          key,
+          tmdbId: info.item.id,
+          title: info.item.title || info.item.name,
+          poster_path: info.item.poster_path,
+          media_type: info.item.media_type || (info.item.first_air_date ? "tv" : "movie"),
+          season: info.season ?? null,
+          episode: info.episode ?? null,
+          position: info.position,
+          duration: info.duration,
+          lastWatchedAt: Date.now(),
+          source: info.source,
+          episodeTitle: info.episodeTitle ?? null,
+          isNextEpisode: !!info.isNextEpisode
+        };
+        storage.set("watchHistory", next);
+        return next;
+      });
+    }
   }, []); // no deps needed
+
+  const removeFromContinueWatching = useCallback((key) => {
+    setWatchHistory((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      storage.set("watchHistory", next);
+      return next;
+    });
+    setProgress((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      storage.set("progress", next);
+      return next;
+    });
+    storage.remove("dlTime_" + key);
+  }, []);
 
   const markWatched = useCallback((key) => {
     setWatched((prev) => {
@@ -805,15 +845,37 @@ export default function App() {
   );
 
   // Filter by progress/watched
-  const inProgress = useMemo(
-    () =>
-      historyWithKeys.filter((h) => {
-        if (watched[h._pk]) return false;
-        const pct = progress[h._pk];
-        return pct != null && pct > 2 && pct < 98;
-      }),
-    [historyWithKeys, progress, watched],
-  );
+  const inProgress = useMemo(() => {
+    const list = Object.values(watchHistory);
+    return list
+      .filter((entry) => {
+        const pk = entry.key;
+        if (watched[pk]) return false;
+        if (entry.isNextEpisode) return true;
+        if (entry.duration === 0) return true; // iframe fallback
+        const pctVal = Math.round((entry.position / entry.duration) * 100);
+        return pctVal >= 5 && pctVal < 90;
+      })
+      .map((entry) => ({
+        id: entry.tmdbId,
+        title: entry.title,
+        name: entry.title,
+        poster_path: entry.poster_path,
+        media_type: entry.media_type,
+        season: entry.season,
+        episode: entry.episode,
+        episodeTitle: entry.episodeTitle,
+        isNextEpisode: entry.isNextEpisode,
+        position: entry.position,
+        duration: entry.duration,
+        source: entry.source
+      }))
+      .sort((a, b) => {
+        const aKey = a.media_type === "movie" ? `movie_${a.id}` : `tv_${a.id}_s${a.season}e${a.episode}`;
+        const bKey = b.media_type === "movie" ? `movie_${b.id}` : `tv_${b.id}_s${b.season}e${b.episode}`;
+        return (watchHistory[bKey]?.lastWatchedAt || 0) - (watchHistory[aKey]?.lastWatchedAt || 0);
+      });
+  }, [watchHistory, watched]);
 
   // Memoized, avoids re-mapping on every download-progress event
   const savedList = useMemo(() => {
@@ -931,6 +993,7 @@ export default function App() {
                 onSelect={handleSelectResult}
                 progress={progress}
                 inProgress={inProgress}
+                onRemoveFromContinue={removeFromContinueWatching}
                 offline={offline}
                 onRetry={retryHome}
                 watched={watched}

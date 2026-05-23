@@ -41,6 +41,7 @@ export default function HomePage({
   onSelect,
   progress,
   inProgress,
+  onRemoveFromContinue,
   offline,
   onRetry,
   watched,
@@ -304,6 +305,7 @@ export default function HomePage({
                       onMarkUnwatched={onMarkUnwatched}
                       ageRating={r.cert}
                       restricted={restr}
+                      onRemove={onRemoveFromContinue}
                     />
                   );
                 })}
