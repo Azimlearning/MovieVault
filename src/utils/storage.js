@@ -1,3 +1,5 @@
+import { clearTmdbCache } from "./api";
+
 // localStorage-based persistence (works in both Vite dev and prod)
 
 const PREFIX = "streambert_";
@@ -133,6 +135,7 @@ export const secureStorage = {
  * "Clear Cache" button and post-update cache clearing in App.jsx.
  */
 export async function clearAppCaches() {
+  clearTmdbCache();
   if (isElectron) {
     try {
       await window.electron.clearAppCache();
