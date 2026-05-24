@@ -7,6 +7,8 @@ import {
   useCallback,
   useMemo,
 } from "react";
+import AsyncBoundary from "../components/AsyncBoundary";
+import { sourceQueue } from "../utils/sourceQueue";
 import {
   tmdbFetch,
   imgUrl,
@@ -70,6 +72,8 @@ export default function MoviePage({
   onSelect,
 }) {
   const [details, setDetails] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [showDownload, setShowDownload] = useState(false);
   const [trailerKey, setTrailerKey] = useState(null);
@@ -103,47 +107,43 @@ export default function MoviePage({
   const [resolveError, setResolveError] = useState(null);
   const [collection, setCollection] = useState(null); // { name, parts }
   // Webview loading overlay
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [webviewLoading, setWebviewLoading] = useState(false);
   const [playerFullscreen, setPlayerFullscreen] = useState(false);
   // pipOpen=true: main webview shows about:blank, pop-out window has the real player
   const [pipOpen, setPipOpen] = useState(false);
   const pipUrlRef = useRef(null); // URL to restore when pop-out closes
   const pipWebContentsIdRef = useRef(null); // cached WebContents ID of the pop-out window
+  
+  const [failoverQueue, setFailoverQueue] = useState([]);
+  const [currentQueueIndex, setCurrentQueueIndex] = useState(0);
+  const [loadingStatus, setLoadingStatus] = useState("");
+  const [failoverError, setFailoverError] = useState(false);
+  const timeoutRef = useRef(null);
 
-  // Derived: detect anime before any effects so effects can use it
-  const isAnime = useMemo(
-    () => isAnimeContent(item, details),
-    [item.id, details],
-  );
+  const [subtitleOffset, setSubtitleOffset] = useState(0);
+  const [feedbackText, setFeedbackText] = useState(null);
+  const feedbackTimerRef = useRef(null);
+
   const [downloaderFolder, setDownloaderFolder] = useState(
     () => storage.get("downloaderFolder") || "",
   );
-
-  // Blocked request stats
-  const {
-    sessionTotal: blockedSession,
-    alltimeTotal: blockedAlltime,
-    showModal: showBlockedModal,
-    setShowModal: setShowBlockedModal,
-    getSessionDomains: getBlockedDomains,
-  } = useBlockedStats(item.id);
-
-  // Age rating
   const [rating, setRating] = useState({ cert: null, minAge: null });
-  const ageLimitSetting = useMemo(() => getAgeLimitSetting(storage), []);
-  const ratingCountry = useMemo(() => getRatingCountry(storage), []);
-  const restricted = isRestricted(rating.minAge, ageLimitSetting);
 
   const progressKey = `movie_${item.id}`;
   const pct = progress[progressKey] || 0;
   const isWatched = !!watched?.[progressKey];
   const hasProgress = pct > 0;
 
-  // ── Derived display values (must be declared before any callbacks that use them) ──
   const d = details || item;
   const title = d.title || d.name;
   const year = (d.release_date || "").slice(0, 4);
   const mediaName = `${title}${year ? " (" + year + ")" : ""}`;
+
+  const isAnime = useMemo(
+    () => isAnimeContent(item, details),
+    [item.id, details],
+  );
 
   const { watchedSecs, totalSecs, displayPct, progressLabel } = useMemo(() => {
     const watchedSecs = storage.get("dlTime_" + progressKey) || 0;
@@ -172,31 +172,369 @@ export default function MoviePage({
     return { watchedSecs, totalSecs, displayPct, progressLabel };
   }, [progressKey, pct, d?.runtime]);
 
-  // Read threshold from settings (default 20s), stable across renders
   const [watchedThreshold] = useState(
     () => storage.get("watchedThreshold") ?? 20,
   );
+
+  const ageLimitSetting = useMemo(() => getAgeLimitSetting(storage), []);
+  const ratingCountry = useMemo(() => getRatingCountry(storage), []);
+  const restricted = isRestricted(rating.minAge, ageLimitSetting);
 
   // Ref to prevent double-marking
   const autoMarkedRef = useRef(false);
   // Tracks last known playback position, used to detect resolution-change resets
   const lastKnownTimeRef = useRef(0);
+  const hasSeekedSavedTimeRef = useRef(false);
   // Timestamp until which we ignore reset detection (post-seekback cooldown)
   const seekBackCooldownRef = useRef(0);
 
+  const showFeedback = useCallback((text) => {
+    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+    setFeedbackText(text);
+    feedbackTimerRef.current = setTimeout(() => setFeedbackText(null), 2000);
+  }, []);
+
+  const changeSubtitleOffset = useCallback((delta) => {
+    setSubtitleOffset((prev) => {
+      const next = Math.max(-5.0, Math.min(5.0, parseFloat((prev + delta).toFixed(1))));
+      storage.set("subOffset_" + progressKey, next);
+      showFeedback(`Subtitle offset: ${next > 0 ? "+" : ""}${next.toFixed(1)}s`);
+      
+      const wv = webviewRef.current;
+      if (wv) {
+        wv.executeJavaScript(`
+          (() => {
+            const v = document.querySelector('video');
+            if (!v) return;
+            if (window.__subOffset === undefined) {
+              window.__subOffset = 0;
+            }
+            const oldOffset = window.__subOffset;
+            window.__subOffset = ${next};
+            const diff = window.__subOffset - oldOffset;
+            if (diff === 0) return;
+            for (let i = 0; i < v.textTracks.length; i++) {
+              const track = v.textTracks[i];
+              if (track.cues) {
+                for (let j = 0; j < track.cues.length; j++) {
+                  const cue = track.cues[j];
+                  cue.startTime += diff;
+                  cue.endTime += diff;
+                }
+              }
+            }
+          })()
+        `).catch(() => {});
+      }
+      return next;
+    });
+  }, [progressKey, showFeedback]);
+
+  const handlePlaybackKey = useCallback((key, shift, ctrl, meta, preventDefault) => {
+    const keyL = key.toLowerCase();
+
+    // 1. Global Navigation Shortcuts (Command/Control + key)
+    if (ctrl || meta) {
+      if (keyL === "k" || keyL === "f") {
+        if (preventDefault) preventDefault();
+        window.dispatchEvent(new CustomEvent("movievault:open-search"));
+        return;
+      }
+      if (key === ",") {
+        if (preventDefault) preventDefault();
+        window.dispatchEvent(new CustomEvent("movievault:open-settings"));
+        return;
+      }
+      if (keyL === "l") {
+        if (preventDefault) preventDefault();
+        window.dispatchEvent(new CustomEvent("movievault:open-library"));
+        return;
+      }
+      if (keyL === "h") {
+        if (preventDefault) preventDefault();
+        window.dispatchEvent(new CustomEvent("movievault:open-home"));
+        return;
+      }
+    }
+
+    // Escape: exit playback
+    if (key === "Escape") {
+      if (preventDefault) preventDefault();
+      onBack();
+      return;
+    }
+
+    const wv = webviewRef.current;
+    if (!wv) return;
+
+    // Play/Pause: Space or K
+    if (key === " " || keyL === "k") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            if (v.paused) v.play();
+            else v.pause();
+            return !v.paused;
+          }
+          return null;
+        })()
+      `).then((res) => {
+        if (res !== null) showFeedback(res ? "Play" : "Pause");
+      }).catch(() => {});
+      return;
+    }
+
+    // Seek: ArrowLeft/ArrowRight (5s), J/L (10s)
+    if (key === "ArrowLeft") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.currentTime = Math.max(0, v.currentTime - 5);
+            return v.currentTime;
+          }
+          return null;
+        })()
+      `).catch(() => {});
+      return;
+    }
+    if (key === "ArrowRight") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.currentTime = Math.min(v.duration || Infinity, v.currentTime + 5);
+            return v.currentTime;
+          }
+          return null;
+        })()
+      `).catch(() => {});
+      return;
+    }
+    if (keyL === "j") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.currentTime = Math.max(0, v.currentTime - 10);
+            return v.currentTime;
+          }
+          return null;
+        })()
+      `).catch(() => {});
+      return;
+    }
+    if (keyL === "l") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.currentTime = Math.min(v.duration || Infinity, v.currentTime + 10);
+            return v.currentTime;
+          }
+          return null;
+        })()
+      `).catch(() => {});
+      return;
+    }
+
+    // Volume: ArrowUp/ArrowDown (10%)
+    if (key === "ArrowUp") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.volume = Math.max(0, Math.min(1, v.volume + 0.1));
+            v.muted = false;
+            return Math.round(v.volume * 100);
+          }
+          return null;
+        })()
+      `).then((vol) => {
+        if (vol !== null) showFeedback(`Volume: ${vol}%`);
+      }).catch(() => {});
+      return;
+    }
+    if (key === "ArrowDown") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.volume = Math.max(0, Math.min(1, v.volume - 0.1));
+            return Math.round(v.volume * 100);
+          }
+          return null;
+        })()
+      `).then((vol) => {
+        if (vol !== null) showFeedback(`Volume: ${vol}%`);
+      }).catch(() => {});
+      return;
+    }
+
+    // Mute: M
+    if (keyL === "m") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.muted = !v.muted;
+            return v.muted;
+          }
+          return null;
+        })()
+      `).then((muted) => {
+        if (muted !== null) showFeedback(muted ? "Muted" : "Unmuted");
+      }).catch(() => {});
+      return;
+    }
+
+    // Fullscreen: F
+    if (keyL === "f") {
+      if (preventDefault) preventDefault();
+      setPlayerFullscreen((prev) => {
+        const next = !prev;
+        if (next) {
+          document.documentElement.setAttribute("data-player-fullscreen", "1");
+        } else {
+          document.documentElement.removeAttribute("data-player-fullscreen");
+        }
+        return next;
+      });
+      return;
+    }
+
+    // Toggle Subtitles: C
+    if (keyL === "c") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (!v) return null;
+          let active = false;
+          for (let i = 0; i < v.textTracks.length; i++) {
+            const track = v.textTracks[i];
+            track.mode = track.mode === 'showing' ? 'hidden' : 'showing';
+            active = track.mode === 'showing';
+          }
+          return active;
+        })()
+      `).then((active) => {
+        if (active !== null) showFeedback(active ? "Subtitles On" : "Subtitles Off");
+      }).catch(() => {});
+      return;
+    }
+
+    // Subtitle offset: G / H
+    if (keyL === "g" || keyL === "h") {
+      if (preventDefault) preventDefault();
+      const delta = keyL === "g" ? (shift ? -1.0 : -0.1) : (shift ? 1.0 : 0.1);
+      changeSubtitleOffset(delta);
+      return;
+    }
+  }, [onBack, changeSubtitleOffset, showFeedback]);
+
+  // Load saved subtitle offset when starting playback
   useEffect(() => {
+    if (playing) {
+      const globalDefault = storage.get("defaultSubtitleOffset") ?? 0;
+      const savedOffset = storage.get("subOffset_" + progressKey) ?? globalDefault;
+      const parsed = parseFloat(savedOffset) || 0;
+      setSubtitleOffset(parsed);
+      
+      // Inject the saved offset after 3 seconds to ensure textTracks are loaded
+      const t = setTimeout(() => {
+        const wv = webviewRef.current;
+        if (wv) {
+          wv.executeJavaScript(`
+            (() => {
+              const v = document.querySelector('video');
+              if (!v) return;
+              window.__subOffset = ${parsed};
+              for (let i = 0; i < v.textTracks.length; i++) {
+                const track = v.textTracks[i];
+                if (track.cues) {
+                  for (let j = 0; j < track.cues.length; j++) {
+                    const cue = track.cues[j];
+                    cue.startTime += ${parsed};
+                    cue.endTime += ${parsed};
+                  }
+                }
+              }
+            })()
+          `).catch(() => {});
+        }
+      }, 3500);
+      return () => clearTimeout(t);
+    }
+  }, [playing, progressKey]);
+
+  const detailState = useMemo(() => {
+    if (!details && detailsLoading) return "loading";
+    if (detailsError) return { loading: false, error: detailsError };
+    return null;
+  }, [details, detailsLoading, detailsError]);
+
+  const allMangaState = useMemo(() => {
+    if (resolvingUrl) return "loading";
+    if (resolveError) {
+      return {
+        loading: false,
+        error: {
+          code: "SCRAPER_PARSE_FAIL",
+          message: resolveError,
+        },
+      };
+    }
+    return null;
+  }, [resolvingUrl, resolveError]);
+
+  const handleRetryAllManga = useCallback(() => {
+    setResolvedPlayerUrl(null);
+    setResolveError(null);
+    setResolvingUrl(false);
+  }, []);
+
+
+
+  const fetchDetails = useCallback(() => {
     let mounted = true;
+    setDetailsLoading(true);
+    setDetailsError(null);
     tmdbFetch(`/movie/${item.id}`, apiKey)
       .then((d) => {
-        if (mounted) setDetails(d);
+        if (mounted) {
+          setDetails(d);
+          setDetailsError(null);
+        }
       })
-      .catch(() => {
-        if (mounted) setDetails(item);
+      .catch((err) => {
+        if (mounted) {
+          setDetailsError({
+            code: err.code || "UNKNOWN_ERROR",
+            message: err.message || "Failed to load movie details",
+          });
+        }
+      })
+      .finally(() => {
+        if (mounted) setDetailsLoading(false);
       });
     return () => {
       mounted = false;
     };
   }, [item.id, apiKey]);
+
+  useEffect(() => {
+    fetchDetails();
+  }, [fetchDetails]);
 
   useEffect(() => {
     let mounted = true;
@@ -388,6 +726,7 @@ export default function MoviePage({
     autoMarkedRef.current = false;
     lastKnownTimeRef.current = 0;
     seekBackCooldownRef.current = 0;
+    hasSeekedSavedTimeRef.current = false;
   }, [item.id, isWatched]);
 
   // Show loader instantly when play starts
@@ -416,19 +755,159 @@ export default function MoviePage({
     };
   }, []);
 
+  const handleFailover = useCallback(() => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    
+    setCurrentQueueIndex((prevIndex) => {
+      const nextIndex = prevIndex + 1;
+      if (nextIndex < failoverQueue.length) {
+        return nextIndex;
+      } else {
+        setFailoverError(true);
+        setWebviewLoading(false);
+        setLoadingStatus("");
+        return prevIndex;
+      }
+    });
+  }, [failoverQueue]);
+
+  // Initialize queue when playing starts
+  useEffect(() => {
+    if (!playing) {
+      setFailoverQueue([]);
+      setCurrentQueueIndex(0);
+      setLoadingStatus("");
+      setFailoverError(false);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      return;
+    }
+
+    const initialSource = storage.get("playerSource") || NON_ANIME_DEFAULT_SOURCE;
+    if (sourceIsAsync(initialSource)) {
+      setPlayerSource(initialSource);
+      return;
+    }
+
+    const q = sourceQueue.getQueue(item.id, null, null);
+    setFailoverQueue(q);
+    setCurrentQueueIndex(0);
+    setPlayerSource(q[0]);
+    setFailoverError(false);
+  }, [playing, item.id]);
+
+  // Handle active queue index changes
+  useEffect(() => {
+    if (!playing || failoverQueue.length === 0) return;
+    const currentSourceId = failoverQueue[currentQueueIndex];
+    if (!currentSourceId) return;
+
+    setPlayerSource(currentSourceId);
+    
+    const sourceLabel = PLAYER_SOURCES.find((s) => s.id === currentSourceId)?.label || currentSourceId;
+    setLoadingStatus(currentQueueIndex === 0 ? `Loading from ${sourceLabel}…` : `Trying ${sourceLabel}…`);
+
+    const timeoutSeconds = sourceQueue.getSourceTimeout();
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    
+    timeoutRef.current = setTimeout(() => {
+      console.log(`Source ${currentSourceId} timed out after ${timeoutSeconds}s.`);
+      handleFailover();
+    }, timeoutSeconds * 1000);
+
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, [playing, failoverQueue, currentQueueIndex, handleFailover]);
+
   // Attach webview load events so we know when the new source has painted
   useEffect(() => {
     if (!playing) return;
     const wv = webviewRef.current;
     if (!wv) return;
-    const done = () => setWebviewLoading(false);
-    wv.addEventListener("did-finish-load", done);
-    wv.addEventListener("did-fail-load", done);
-    return () => {
-      wv.removeEventListener("did-finish-load", done);
-      wv.removeEventListener("did-fail-load", done);
+    
+    const handleFinished = async () => {
+      if (sourceIsAsync(playerSource)) {
+        setWebviewLoading(false);
+        return;
+      }
+
+      try {
+        const title = await wv.executeJavaScript("document.title");
+        const bodyText = await wv.executeJavaScript("document.body.innerText");
+        
+        const isErrorTitle = title && (title.includes("502") || title.includes("504") || title.includes("Server Error") || title.includes("Cloudflare"));
+        const isErrorBody = bodyText && (bodyText.includes("502 Bad Gateway") || bodyText.includes("504 Gateway Timeout") || bodyText.includes("Server Error") || bodyText.includes("Cloudflare"));
+        
+        if (isErrorTitle || isErrorBody) {
+          console.log(`Webview loaded successfully but contains error content:`, title, bodyText);
+          handleFailover();
+          return;
+        }
+      } catch (err) {
+        console.warn("Could not inspect webview page content:", err);
+      }
+
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      setWebviewLoading(false);
+      setLoadingStatus("");
+      
+      const activeSourceId = failoverQueue[currentQueueIndex] || playerSource;
+      sourceQueue.saveLastGoodSource(item.id, null, null, activeSourceId);
+
+      const runAutoplay = () => {
+        if (window.electron?.autoplayVideo && wv && !wv.isDestroyed?.()) {
+          window.electron.autoplayVideo(wv.getWebContentsId()).catch(() => {});
+        }
+      };
+      runAutoplay();
+      setTimeout(runAutoplay, 500);
+      setTimeout(runAutoplay, 1500);
+      setTimeout(runAutoplay, 3000);
     };
-  }, [playing, playerSource, item.id]);
+
+    const handleFailed = () => {
+      if (sourceIsAsync(playerSource)) {
+        setWebviewLoading(false);
+        return;
+      }
+      handleFailover();
+    };
+
+    const handleWebviewInput = (e) => {
+      handlePlaybackKey(
+        e.key,
+        e.shift,
+        e.control,
+        e.meta,
+        () => e.preventDefault()
+      );
+    };
+
+    wv.addEventListener("did-finish-load", handleFinished);
+    wv.addEventListener("did-fail-load", handleFailed);
+    wv.addEventListener("before-input-event", handleWebviewInput);
+    return () => {
+      wv.removeEventListener("did-finish-load", handleFinished);
+      wv.removeEventListener("did-fail-load", handleFailed);
+      wv.removeEventListener("before-input-event", handleWebviewInput);
+    };
+  }, [playing, playerSource, item.id, failoverQueue, currentQueueIndex, handleFailover, handlePlaybackKey]);
+
+  // Window keydown listener for cases where focus is not trapped in webview
+  useEffect(() => {
+    if (!playing) return;
+    const handleWinKey = (e) => {
+      handlePlaybackKey(
+        e.key,
+        e.shiftKey,
+        e.ctrlKey,
+        e.metaKey,
+        () => e.preventDefault()
+      );
+    };
+    window.addEventListener("keydown", handleWinKey);
+    return () => window.removeEventListener("keydown", handleWinKey);
+  }, [playing, handlePlaybackKey]);
 
   // ── Auto-track progress + auto-watched every 5s ──────────────────────────
   useEffect(() => {
@@ -478,6 +957,26 @@ export default function MoviePage({
           if (result && result.duration > 0) {
             const ct = result.currentTime;
 
+            // Seek to saved position on first detection
+            if (!hasSeekedSavedTimeRef.current) {
+              const savedTime = storage.get("dlTime_" + progressKey) || 0;
+              if (savedTime > 5 && savedTime < result.duration - 15) {
+                hasSeekedSavedTimeRef.current = true;
+                try {
+                  await wv.executeJavaScript(`
+                    (() => {
+                      const v = document.querySelector('video')
+                      if (v) v.currentTime = ${savedTime}
+                    })()
+                  `);
+                  lastKnownTimeRef.current = savedTime;
+                  return;
+                } catch {}
+              } else {
+                hasSeekedSavedTimeRef.current = true;
+              }
+            }
+
             // ── Resolution-change reset detection ──────────────────────────
             // Videasy resets to 0 on quality change. We only seek back if:
             // - ct is near zero (≤5s)
@@ -513,7 +1012,12 @@ export default function MoviePage({
               lastKnownTimeRef.current = ct;
             }
             const p = Math.floor((ct / result.duration) * 100);
-            saveProgressRef.current(progressKey, Math.min(p, 100));
+            saveProgressRef.current(progressKey, Math.min(p, 100), {
+              item: d,
+              position: ct,
+              duration: result.duration,
+              source: playerSource
+            });
             // Also persist actual seconds so DownloadsPage can show resume position
             storage.set("dlTime_" + progressKey, Math.floor(ct));
 
@@ -626,7 +1130,8 @@ export default function MoviePage({
 
   return (
     <div className="fade-in">
-      <div className="detail-hero">
+      <AsyncBoundary state={detailState} onRetry={fetchDetails}>
+        <div className="detail-hero">
         <div
           className="detail-bg"
           style={{
@@ -818,7 +1323,7 @@ export default function MoviePage({
                 <span style={{ fontSize: 14, color: "var(--text2)" }}>
                   {resolvingUrl
                     ? "Looking up movie on AllManga…"
-                    : `Loading ${PLAYER_SOURCES.find((s) => s.id === playerSource)?.label ?? "source"}…`}
+                    : loadingStatus || `Loading ${PLAYER_SOURCES.find((s) => s.id === playerSource)?.label ?? "source"}…`}
                 </span>
               </div>
             )}
@@ -848,6 +1353,68 @@ export default function MoviePage({
                 <span style={{ fontSize: 12, color: "var(--text3)" }}>
                   Try a different source, or switch sub/dub.
                 </span>
+              </div>
+            )}
+            {/* Failover Error Card */}
+            {failoverError && (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  zIndex: 10,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "rgba(0,0,0,0.92)",
+                  gap: 16,
+                  padding: 24,
+                  borderRadius: "inherit",
+                }}
+              >
+                <span style={{ fontSize: 48 }}>⚠️</span>
+                <h3 style={{ margin: 0, fontSize: 18, color: "var(--text)" }}>All Sources Failed</h3>
+                <p style={{ margin: 0, color: "var(--text3)", fontSize: 13, maxWidth: 400, textAlign: "center", lineHeight: 1.5 }}>
+                  We tried all available video sources but none resolved successfully.
+                </p>
+                <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => {
+                      setFailoverError(false);
+                      setWebviewLoading(true);
+                      setCurrentQueueIndex(0);
+                    }}
+                  >
+                    Retry
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      const btn = document.querySelector(".player-source-btn");
+                      if (btn) btn.click();
+                    }}
+                  >
+                    Switch Source Manually
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      const logs = storage.get("brokenSourceReports") || [];
+                      logs.push({
+                        tmdbId: item.id,
+                        title: item.title || item.name,
+                        type: "movie",
+                        ts: Date.now(),
+                        sourcesTried: failoverQueue
+                      });
+                      storage.set("brokenSourceReports", logs);
+                      alert("Report saved to Settings -> Diagnostics.");
+                    }}
+                  >
+                    Report Broken
+                  </button>
+                </div>
               </div>
             )}
             {/* Pop-out active: main stream is paused, pop-out has the real player */}
@@ -895,31 +1462,54 @@ export default function MoviePage({
                 </button>
               </div>
             )}
-            <webview
-              ref={webviewRef}
-              src={
-                pipOpen
-                  ? "about:blank"
-                  : sourceIsAsync(playerSource)
-                    ? resolvedPlayerUrl || "about:blank"
+            {sourceIsAsync(playerSource) ? (
+              <AsyncBoundary state={allMangaState} onRetry={handleRetryAllManga}>
+                <webview
+                  ref={webviewRef}
+                  src={
+                    pipOpen
+                      ? "about:blank"
+                      : resolvedPlayerUrl || "about:blank"
+                  }
+                  partition="persist:player"
+                  allowpopups="false"
+                  sandbox="allow-scripts allow-same-origin allow-forms"
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    border: "none",
+                    zIndex: 1,
+                    visibility:
+                      webviewLoading || !resolvedPlayerUrl
+                        ? "hidden"
+                        : "visible",
+                  }}
+                />
+              </AsyncBoundary>
+            ) : (
+              <webview
+                ref={webviewRef}
+                src={
+                  pipOpen
+                    ? "about:blank"
                     : getSourceUrl(playerSource, "movie", item.id, null, null)
-              }
-              partition="persist:player"
-              allowpopups="false"
-              sandbox="allow-scripts allow-same-origin allow-forms"
-              style={{
-                position: "absolute",
-                inset: 0,
-                width: "100%",
-                height: "100%",
-                border: "none",
-                visibility:
-                  webviewLoading ||
-                  (sourceIsAsync(playerSource) && !resolvedPlayerUrl)
-                    ? "hidden"
-                    : "visible",
-              }}
-            />
+                }
+                partition="persist:player"
+                allowpopups="false"
+                sandbox="allow-scripts allow-same-origin allow-forms"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: "100%",
+                  height: "100%",
+                  border: "none",
+                  zIndex: 1,
+                  visibility: webviewLoading ? "hidden" : "visible",
+                }}
+              />
+            )}
             {/* Left-side overlay button group, flex row, no fixed px offsets */}
             <div className="player-overlay-group">
               <button
@@ -1014,7 +1604,12 @@ export default function MoviePage({
                     onClick={() => {
                       setShowSourceMenu(false);
                       if (src.id === playerSource) return;
+                      // Manual override: reset failover queue with just the selected source
+                      setFailoverQueue([src.id]);
+                      setCurrentQueueIndex(0);
                       setPlayerSource(src.id);
+                      setFailoverError(false);
+                      setWebviewLoading(true);
                       storage.set("playerSource", src.id);
                       setM3u8Url(null);
                       setInterceptedSubs([]);
@@ -1076,6 +1671,11 @@ export default function MoviePage({
                 </span>
               )}
             </button>
+            {feedbackText && (
+              <div className="player-feedback-overlay">
+                {feedbackText}
+              </div>
+            )}
           </div>
 
           {displayPct > 0 && (
@@ -1169,6 +1769,7 @@ export default function MoviePage({
           tmdbId={item.id}
         />
       )}
+      </AsyncBoundary>
     </div>
   );
 }

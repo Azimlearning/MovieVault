@@ -3,6 +3,7 @@ import MediaCard from "../components/MediaCard";
 import TrendingCarousel from "../components/TrendingCarousel";
 import { PlayIcon, StarIcon } from "../components/Icons";
 import { imgUrl, tmdbFetch } from "../utils/api";
+import AsyncBoundary from "../components/AsyncBoundary";
 import { useRatings, getRatingForItem } from "../utils/useRatings";
 import { isRestricted } from "../utils/ageRating";
 import { storage } from "../utils/storage";
@@ -36,9 +37,11 @@ export default function HomePage({
   trending,
   trendingTV,
   loading,
+  error,
   onSelect,
   progress,
   inProgress,
+  onRemoveFromContinue,
   offline,
   onRetry,
   watched,
@@ -48,6 +51,29 @@ export default function HomePage({
   apiKey,
 }) {
   const hero = trending[0];
+
+  const boundaryState = useMemo(() => {
+    if (loading) return "loading";
+    if (offline) {
+      return {
+        loading: false,
+        error: {
+          code: "NETWORK_OFFLINE",
+          message: "You're offline — showing cached content.",
+        },
+      };
+    }
+    if (error) {
+      return {
+        loading: false,
+        error,
+      };
+    }
+    if (!loading && trending.length === 0 && trendingTV.length === 0) {
+      return "empty";
+    }
+    return null;
+  }, [loading, offline, error, trending, trendingTV]);
 
   const [recommendedItems, setRecommendedItems] = useState([]);
   const [topRatedItems, setTopRatedItems] = useState([]);
@@ -212,80 +238,44 @@ export default function HomePage({
 
   return (
     <div className="fade-in">
-      {/* ── Offline ── */}
-      {offline && (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            minHeight: "60vh",
-            gap: 16,
-            color: "var(--text2)",
-          }}
-        >
-          <div style={{ fontSize: 48 }}>📡</div>
-          <div style={{ fontSize: 20, fontWeight: 600, color: "var(--text)" }}>
-            No internet connection
-          </div>
-          <div style={{ fontSize: 14, color: "var(--text3)" }}>
-            Trending and search require an internet connection. Your downloads
-            and library still work offline.
-          </div>
-          <button
-            className="btn btn-primary"
-            style={{ marginTop: 8 }}
-            onClick={onRetry}
-          >
-            Retry
-          </button>
-        </div>
-      )}
-
-      {!offline && loading && (
-        <div className="loader">
-          <div className="spinner" />
-        </div>
-      )}
-
-      {/* ── Hero (always first) ── */}
-      {!loading && hero && (
-        <div className="hero">
-          <div
-            className="hero-bg"
-            style={{
-              backgroundImage: `url(${imgUrl(hero.backdrop_path, "original")})`,
-            }}
-          />
-          <div className="hero-gradient" />
-          <div className="hero-content">
-            <div className="hero-type">Trending · Movie</div>
-            <div className="hero-title">{hero.title || hero.name}</div>
-            <div className="hero-meta">
-              <span className="hero-rating">
-                <StarIcon /> {hero.vote_average?.toFixed(1)}
-              </span>
-              <span>{hero.release_date?.slice(0, 4)}</span>
-            </div>
-            <div className="hero-overview">{hero.overview}</div>
-            <div className="hero-actions">
-              <button
-                className="btn btn-primary"
-                onClick={() => onSelect(hero)}
-              >
-                <PlayIcon /> Watch Now
-              </button>
-              <button
-                className="btn btn-secondary"
-                onClick={() => onSelect(hero)}
-              >
-                More Info
-              </button>
+      <AsyncBoundary state={boundaryState} onRetry={onRetry}>
+        {/* ── Hero (always first) ── */}
+        {hero && (
+          <div className="hero">
+            <div
+              className="hero-bg"
+              style={{
+                backgroundImage: `url(${imgUrl(hero.backdrop_path, "original")})`,
+              }}
+            />
+            <div className="hero-gradient" />
+            <div className="hero-content">
+              <div className="hero-type">Trending · Movie</div>
+              <div className="hero-title">{hero.title || hero.name}</div>
+              <div className="hero-meta">
+                <span className="hero-rating">
+                  <StarIcon /> {hero.vote_average?.toFixed(1)}
+                </span>
+                <span>{hero.release_date?.slice(0, 4)}</span>
+              </div>
+              <div className="hero-overview">{hero.overview}</div>
+              <div className="hero-actions">
+                <button
+                  className="btn btn-primary"
+                  onClick={() => onSelect(hero)}
+                >
+                  <PlayIcon /> Watch Now
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => onSelect(hero)}
+                >
+                  More Info
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* ── Rows in user-configured order ── */}
       {rowOrder.map((id) => {
@@ -315,6 +305,7 @@ export default function HomePage({
                       onMarkUnwatched={onMarkUnwatched}
                       ageRating={r.cert}
                       restricted={restr}
+                      onRemove={onRemoveFromContinue}
                     />
                   );
                 })}
@@ -441,6 +432,7 @@ export default function HomePage({
 
         return null;
       })}
+      </AsyncBoundary>
     </div>
   );
 }

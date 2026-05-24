@@ -13,7 +13,8 @@ import WindowTitlebar from "./components/WindowTitlebar";
 import { storage, secureStorage, STORAGE_KEYS } from "./utils/storage";
 import { applyAccentColor } from "./utils/appearance";
 import { collectBackupData } from "./utils/backup";
-import { tmdbFetch, setApiErrorHandlers } from "./utils/api";
+import { tmdbFetch, setApiErrorHandlers, isAnimeContent, fetchAnilistData } from "./utils/api";
+import { scrobbleTrakt, scrobbleAnilist } from "./utils/oauth";
 import { clearAppCaches } from "./utils/storage";
 
 import Sidebar from "./components/Sidebar";
@@ -30,6 +31,65 @@ const LibraryPage = lazy(() => import("./pages/LibraryPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const DownloadsPage = lazy(() => import("./pages/DownloadsPage"));
 import { checkForUpdates } from "./utils/updates";
+
+const handleIntegrationsSync = (entry, pct) => {
+  // 1. Discord RPC
+  const discordRpcEnabled = storage.get("discordRpcEnabled") !== false;
+  if (discordRpcEnabled && window.electron?.setDiscordActivity) {
+    const isTv = entry.media_type === "tv";
+    const details = isTv 
+      ? `S${entry.season}E${entry.episode}: ${entry.episodeTitle || "Episode"}`
+      : "Watching Movie";
+    
+    const elapsed = Math.round(entry.position);
+    window.electron.setDiscordActivity({
+      details: entry.title,
+      state: details,
+      startTimestamp: Math.floor((Date.now() - elapsed * 1000) / 1000) * 1000,
+      largeImageKey: "logo",
+      largeImageText: "Cinevault",
+      smallImageKey: isTv ? "tv" : "movie",
+      smallImageText: isTv ? "Series" : "Movie"
+    });
+  }
+
+  // 2. Trakt Scrobbling
+  const traktToken = storage.get("traktToken");
+  if (traktToken) {
+    const action = pct >= 90 ? "completed" : pct <= 5 ? "watch" : "watching";
+    const lastScrobblePct = window.__lastScrobblePct?.[entry.key] || 0;
+    if (pct >= 90 || pct <= 5 || Math.abs(pct - lastScrobblePct) >= 10) {
+      if (!window.__lastScrobblePct) window.__lastScrobblePct = {};
+      window.__lastScrobblePct[entry.key] = pct;
+      
+      scrobbleTrakt({
+        id: entry.tmdbId,
+        media_type: entry.media_type,
+        season: entry.season,
+        episode: entry.episode
+      }, pct, action);
+    }
+  }
+
+  // 3. AniList Sync
+  const anilistToken = storage.get("anilistToken");
+  const genres = entry.genres || [];
+  const hasAnimation = genres.includes(16);
+  const isAnime = hasAnimation && isAnimeContent({ original_language: "ja", genre_ids: genres });
+  
+  if (anilistToken && isAnime && entry.media_type === "tv") {
+    if (pct >= 90 && !window.__anilistSyncedEpisodes?.[entry.key]) {
+      if (!window.__anilistSyncedEpisodes) window.__anilistSyncedEpisodes = {};
+      window.__anilistSyncedEpisodes[entry.key] = true;
+      
+      fetchAnilistData(entry.title, "ANIME", entry.tmdbId).then(data => {
+        if (data?.id) {
+          scrobbleAnilist(data.id, entry.episode, "CURRENT");
+        }
+      }).catch(err => console.error("AniList progress sync failed:", err));
+    }
+  }
+};
 
 export default function App() {
   // apiKey loaded async from secure storage (OS keychain)
@@ -58,6 +118,7 @@ export default function App() {
   const [progress, setProgress] = useState(() => storage.get("progress") || {});
   const [history, setHistory] = useState(() => storage.get("history") || []);
   const [watched, setWatched] = useState(() => storage.get("watched") || {});
+  const [watchHistory, setWatchHistory] = useState(() => storage.get("watchHistory") || {});
   const [toast, setToast] = useState(null);
   const [updateBanner, setUpdateBanner] = useState(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
@@ -68,7 +129,20 @@ export default function App() {
   const [trending, setTrending] = useState([]);
   const [trendingTV, setTrendingTV] = useState([]);
   const [loadingHome, setLoadingHome] = useState(false);
+  const [errorHome, setErrorHome] = useState(null);
   const [offline, setOffline] = useState(() => !navigator.onLine);
+
+  // ── Network offline detection ──────────────────────────────────────────────
+  useEffect(() => {
+    const handleOnline = () => setOffline(false);
+    const handleOffline = () => setOffline(true);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   // ── Scheduled backup: run on startup if due ─────────────────────────────────
   useEffect(() => {
@@ -478,9 +552,11 @@ export default function App() {
     ) {
       setTrending(cached.movies || []);
       setTrendingTV(cached.tv || []);
+      setErrorHome(null);
       return;
     }
     setLoadingHome(true);
+    setErrorHome(null);
     Promise.all([
       tmdbFetch("/trending/movie/week", apiKey),
       tmdbFetch("/trending/tv/week", apiKey),
@@ -492,7 +568,12 @@ export default function App() {
         setTrendingTV(tv);
         storage.set("trendingCache", { movies, tv, ts: Date.now(), lang: currentLang });
       })
-      .catch(() => {})
+      .catch((err) => {
+        setErrorHome({
+          code: err.code || "UNKNOWN_ERROR",
+          message: err.message || "Failed to load trending items",
+        });
+      })
       .finally(() => setLoadingHome(false));
   }, [apiKey]);
 
@@ -588,40 +669,74 @@ export default function App() {
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "f") {
-        e.preventDefault();
-        setShowSearch(true);
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        if (pageRef.current === "downloads") {
+      const tag = (e.target?.tagName || "").toUpperCase();
+      const isInput = tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable;
+
+      if ((e.metaKey || e.ctrlKey) && (e.key === "f" || e.key === "k" || e.key === "F" || e.key === "K")) {
+        if (e.key.toLowerCase() === "k" && pageRef.current === "downloads") {
           e.preventDefault();
           setDlSearchOpen(true);
+        } else {
+          e.preventDefault();
+          setShowSearch(true);
         }
       }
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        navigate("settings");
+      }
+      if ((e.metaKey || e.ctrlKey) && (e.key === "l" || e.key === "L")) {
+        e.preventDefault();
+        navigate("history");
+      }
+      if ((e.metaKey || e.ctrlKey) && (e.key === "h" || e.key === "H")) {
+        e.preventDefault();
+        navigate("home");
+      }
       if (e.key === "Escape") {
+        e.preventDefault();
         setShowSearch(false);
         setShowShortcuts(false);
       }
       if (e.key === "?" && !e.ctrlKey && !e.metaKey) {
-        const tag = (e.target?.tagName || "").toUpperCase();
-        if (tag !== "INPUT" && tag !== "TEXTAREA") {
+        if (!isInput) {
           e.preventDefault();
           setShowShortcuts((v) => !v);
         }
       }
       // Ctrl+Z / Cmd+Z → navigate back
-      if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "z" || e.key === "Z") && !e.shiftKey) {
         e.preventDefault();
         navigateBack();
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === "r") {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "r" || e.key === "R")) {
         e.preventDefault();
         window.location.reload();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [navigateBack]);
+  }, [navigateBack, navigate]);
+
+  // ── Custom event bindings for webview keyboard shortcuts bypass ───────────
+  useEffect(() => {
+    const handleOpenSearch = () => setShowSearch(true);
+    const handleOpenSettings = () => navigate("settings");
+    const handleOpenLibrary = () => navigate("history");
+    const handleOpenHome = () => navigate("home");
+
+    window.addEventListener("movievault:open-search", handleOpenSearch);
+    window.addEventListener("movievault:open-settings", handleOpenSettings);
+    window.addEventListener("movievault:open-library", handleOpenLibrary);
+    window.addEventListener("movievault:open-home", handleOpenHome);
+
+    return () => {
+      window.removeEventListener("movievault:open-search", handleOpenSearch);
+      window.removeEventListener("movievault:open-settings", handleOpenSettings);
+      window.removeEventListener("movievault:open-library", handleOpenLibrary);
+      window.removeEventListener("movievault:open-home", handleOpenHome);
+    };
+  }, [navigate]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const toastTimerRef = useRef(null);
@@ -735,7 +850,7 @@ export default function App() {
     });
   }, []); // no deps needed
 
-  const saveProgress = useCallback((key, pct) => {
+  const saveProgress = useCallback((key, pct, info = null) => {
     // Functional update - without this, TVPage's setInterval keeps spreading
     // the progress object from when the interval was created, overwriting
     // saves from other episodes (classic stale closure bug).
@@ -745,7 +860,48 @@ export default function App() {
       storage.set("progress", next);
       return next;
     });
+
+    if (info) {
+      setWatchHistory((prev) => {
+        const next = { ...prev };
+        next[key] = {
+          key,
+          tmdbId: info.item.id,
+          title: info.item.title || info.item.name,
+          poster_path: info.item.poster_path,
+          media_type: info.item.media_type || (info.item.first_air_date ? "tv" : "movie"),
+          season: info.season ?? null,
+          episode: info.episode ?? null,
+          position: info.position,
+          duration: info.duration,
+          lastWatchedAt: Date.now(),
+          source: info.source,
+          episodeTitle: info.episodeTitle ?? null,
+          isNextEpisode: !!info.isNextEpisode,
+          genres: info.item.genres || info.item.genre_ids || []
+        };
+        storage.set("watchHistory", next);
+        handleIntegrationsSync(next[key], pct);
+        return next;
+      });
+    }
   }, []); // no deps needed
+
+  const removeFromContinueWatching = useCallback((key) => {
+    setWatchHistory((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      storage.set("watchHistory", next);
+      return next;
+    });
+    setProgress((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      storage.set("progress", next);
+      return next;
+    });
+    storage.remove("dlTime_" + key);
+  }, []);
 
   const markWatched = useCallback((key) => {
     setWatched((prev) => {
@@ -785,15 +941,37 @@ export default function App() {
   );
 
   // Filter by progress/watched
-  const inProgress = useMemo(
-    () =>
-      historyWithKeys.filter((h) => {
-        if (watched[h._pk]) return false;
-        const pct = progress[h._pk];
-        return pct != null && pct > 2 && pct < 98;
-      }),
-    [historyWithKeys, progress, watched],
-  );
+  const inProgress = useMemo(() => {
+    const list = Object.values(watchHistory);
+    return list
+      .filter((entry) => {
+        const pk = entry.key;
+        if (watched[pk]) return false;
+        if (entry.isNextEpisode) return true;
+        if (entry.duration === 0) return true; // iframe fallback
+        const pctVal = Math.round((entry.position / entry.duration) * 100);
+        return pctVal >= 5 && pctVal < 90;
+      })
+      .map((entry) => ({
+        id: entry.tmdbId,
+        title: entry.title,
+        name: entry.title,
+        poster_path: entry.poster_path,
+        media_type: entry.media_type,
+        season: entry.season,
+        episode: entry.episode,
+        episodeTitle: entry.episodeTitle,
+        isNextEpisode: entry.isNextEpisode,
+        position: entry.position,
+        duration: entry.duration,
+        source: entry.source
+      }))
+      .sort((a, b) => {
+        const aKey = a.media_type === "movie" ? `movie_${a.id}` : `tv_${a.id}_s${a.season}e${a.episode}`;
+        const bKey = b.media_type === "movie" ? `movie_${b.id}` : `tv_${b.id}_s${b.season}e${b.episode}`;
+        return (watchHistory[bKey]?.lastWatchedAt || 0) - (watchHistory[aKey]?.lastWatchedAt || 0);
+      });
+  }, [watchHistory, watched]);
 
   // Memoized, avoids re-mapping on every download-progress event
   const savedList = useMemo(() => {
@@ -854,6 +1032,11 @@ export default function App() {
         />
 
         <div className="main">
+          {offline && (
+            <div className="api-status-banner api-status-warn">
+              <span>📡 You're offline — showing cached content</span>
+            </div>
+          )}
           {/* ── API key status banner ── */}
           {/* Suspense boundary: lazy page chunks are fetched on first visit */}
           {apiKeyStatus === "invalid_token" && (
@@ -902,9 +1085,11 @@ export default function App() {
                 trending={trending}
                 trendingTV={trendingTV}
                 loading={loadingHome}
+                error={errorHome}
                 onSelect={handleSelectResult}
                 progress={progress}
                 inProgress={inProgress}
+                onRemoveFromContinue={removeFromContinueWatching}
                 offline={offline}
                 onRetry={retryHome}
                 watched={watched}
@@ -967,6 +1152,7 @@ export default function App() {
                 watched={watched}
                 onMarkWatched={markWatched}
                 onMarkUnwatched={markUnwatched}
+                watchHistory={watchHistory}
               />
             )}
             {page === "settings" && (

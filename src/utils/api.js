@@ -1,3 +1,5 @@
+import { requestCache } from "./cache";
+
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const IMG_BASE = "https://image.tmdb.org/t/p";
 
@@ -37,10 +39,18 @@ export const setApiErrorHandlers = (onAuth, onUnreachable) => {
 const _tmdbCache = new Map(); // key → { data, expiresAt }
 const TMDB_CACHE_TTL = 5 * 60 * 1000;
 
+const _activeBackgroundFetches = new Set();
+const _bustedKeys = new Set();
+const isReload = typeof window !== "undefined" && 
+  (performance.getEntriesByType("navigation")[0]?.type === "reload" || 
+   performance.navigation?.type === 1);
+
 /** Clears the in-memory TMDB cache and the persisted trending cache.
  * Calling this when the metadata language changes. */
 export function clearTmdbCache() {
   _tmdbCache.clear();
+  _bustedKeys.clear();
+  requestCache.clear();
   try {
     localStorage.removeItem("streambert_trendingCache");
   } catch {}
@@ -69,50 +79,98 @@ function _releaseSlot() {
   }
 }
 
-export const tmdbFetch = async (path, apiKey) => {
-  const localizedPath = withLanguage(path);
-  const cacheKey = `${apiKey}|${localizedPath}`;
-  const cached = _tmdbCache.get(cacheKey);
-  if (cached && Date.now() < cached.expiresAt) return cached.data;
-
+const _fetchAndUpdate = async (path, apiKey, cacheKey, ttl) => {
   await _acquireSlot();
 
   let res;
   try {
+    const localizedPath = withLanguage(path);
     res = await fetch(`${TMDB_BASE}${localizedPath}`, {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
-  } catch {
+  } catch (e) {
     _releaseSlot();
     _onUnreachable?.();
-    throw new Error("TMDB unreachable");
-  } finally {
-    // releaseSlot is called in the catch above for network errors;
-    // for successful responses it is called immediately below, before
-    // parsing, so the slot is held only during the actual in-flight
-    // request, not during res.json().
+    const err = new Error("TMDB unreachable");
+    err.code = "NETWORK_OFFLINE";
+    throw err;
   }
 
   _releaseSlot();
 
   if (res.status === 401 || res.status === 403) {
     _onAuthError?.();
-    throw new Error(`TMDB ${res.status}`);
+    const err = new Error(`TMDB Auth Error ${res.status}`);
+    err.code = "TMDB_AUTH_ERROR";
+    throw err;
   }
 
-  if (!res.ok) throw new Error(`TMDB ${res.status}`);
+  if (res.status === 429) {
+    const err = new Error("TMDB Rate Limit Exceeded");
+    err.code = "TMDB_RATE_LIMIT";
+    err.status = 429;
+    throw err;
+  }
+
+  if (!res.ok) {
+    const err = new Error(`TMDB Error ${res.status}`);
+    err.code = "UNKNOWN_ERROR";
+    throw err;
+  }
+  
   const data = await res.json();
-  _tmdbCache.set(cacheKey, { data, expiresAt: Date.now() + TMDB_CACHE_TTL });
-
-  // Evict stale entries to prevent unbounded memory growth
-  if (_tmdbCache.size > 80) {
-    const now = Date.now();
-    for (const [k, v] of _tmdbCache) {
-      if (now >= v.expiresAt) _tmdbCache.delete(k);
-    }
-  }
+  const expiresAt = Date.now() + ttl;
+  
+  _tmdbCache.set(cacheKey, { data, expiresAt });
+  requestCache.set(cacheKey, data, expiresAt);
 
   return data;
+};
+
+export const tmdbFetch = async (path, apiKey) => {
+  if (typeof window !== "undefined" && window.localStorage?.getItem("mock_tmdb_429") === "true") {
+    const err = new Error("TMDB Rate Limit Exceeded (MOCKED 429)");
+    err.code = "TMDB_RATE_LIMIT";
+    err.status = 429;
+    throw err;
+  }
+
+  const localizedPath = withLanguage(path);
+  const cacheKey = `${apiKey}|${localizedPath}`;
+  
+  const isStable = path.includes("/genre/") || path.includes("/configuration");
+  const ttl = isStable ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+
+  // Tier 1: check in-memory cache
+  const cachedMem = _tmdbCache.get(cacheKey);
+  if (cachedMem && Date.now() < cachedMem.expiresAt) {
+    return cachedMem.data;
+  }
+
+  // Tier 2: check persistent IndexedDB cache
+  const isBusted = isReload && !_bustedKeys.has(cacheKey);
+  if (!isBusted) {
+    const cachedDb = await requestCache.get(cacheKey);
+    if (cachedDb) {
+      const isExpired = Date.now() > cachedDb.expiresAt;
+      const isStale = isExpired || (Date.now() - cachedDb.updatedAt > 5 * 60 * 1000);
+      
+      if (isStale && !_activeBackgroundFetches.has(cacheKey)) {
+        _activeBackgroundFetches.add(cacheKey);
+        _fetchAndUpdate(path, apiKey, cacheKey, ttl)
+          .catch(() => {})
+          .finally(() => _activeBackgroundFetches.delete(cacheKey));
+      }
+      
+      _tmdbCache.set(cacheKey, { data: cachedDb.data, expiresAt: cachedDb.expiresAt });
+      return cachedDb.data;
+    }
+  } else {
+    _bustedKeys.add(cacheKey);
+  }
+
+  // Tier 3: Fetch synchronously
+  return _fetchAndUpdate(path, apiKey, cacheKey, ttl);
 };
 
 // ── Player Sources ────────────────────────────────────────────────────────────
@@ -240,7 +298,7 @@ query ($search: String, $type: MediaType) {
 
 // ── AniList cache (localStorage + in-memory) ──────────────────────────────────
 const ANILIST_CACHE_KEY = "streambert_anilistCache";
-const ANILIST_CACHE_TTL = 1000 * 60 * 60 * 24 * 7; // 7 days
+const ANILIST_CACHE_TTL = 1000 * 60 * 60 * 24; // 24 hours
 
 // loaded once on first use, flushed to localStorage on write.
 let _anilistCache = null;
@@ -390,7 +448,7 @@ export const isAnimeContent = (item, details) => {
 
 // Default sources
 export const ANIME_DEFAULT_SOURCE = "allmanga";
-export const NON_ANIME_DEFAULT_SOURCE = "vidsrc";
+export const NON_ANIME_DEFAULT_SOURCE = "videasy";
 
 // ── Episode Group fetch (localStorage + in-memory cache, 7-day TTL) ─────────
 // Episode groups almost never change -> cache aggressively across sessions.

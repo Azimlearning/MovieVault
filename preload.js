@@ -27,27 +27,27 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.removeListener("download-progress", h),
 
   // Download actions
-  checkDownloader: (folder) => ipcRenderer.invoke("check-downloader", folder),
-  runDownload: (args) => ipcRenderer.invoke("run-download", args),
-  getDownloads: () => ipcRenderer.invoke("get-downloads"),
-  deleteDownload: (args) => ipcRenderer.invoke("delete-download", args),
-  showInFolder: (path) => ipcRenderer.invoke("show-in-folder", path),
-  fileExists: (path) => ipcRenderer.invoke("file-exists", path),
-  scanDirectory: (path) => ipcRenderer.invoke("scan-directory", path),
+  checkDownloader: (folder) => ipcRenderer.invoke("check-downloader", folder).then((r) => r.ok ? r.data : { exists: false, reason: r.error?.code }),
+  runDownload: (args) => ipcRenderer.invoke("run-download", args).then((r) => r.ok ? { ok: true, id: r.data?.id ?? r.id } : { ok: false, error: r.error?.message }),
+  getDownloads: () => ipcRenderer.invoke("get-downloads").then((r) => r.ok ? r.data : []),
+  deleteDownload: (args) => ipcRenderer.invoke("delete-download", args).then((r) => r.ok ? { ok: true } : { ok: false, error: r.error?.message }),
+  showInFolder: (path) => ipcRenderer.invoke("show-in-folder", path).then((r) => r.ok ? r.data : null),
+  fileExists: (path) => ipcRenderer.invoke("file-exists", path).then((r) => r.ok ? r.data : false),
+  scanDirectory: (path) => ipcRenderer.invoke("scan-directory", path).then((r) => r.ok ? r.data : []),
 
   // Misc
-  pickFolder: () => ipcRenderer.invoke("pick-folder"),
-  openExternal: (url) => ipcRenderer.invoke("open-external", url),
-  openPath: (filePath) => ipcRenderer.invoke("open-path", filePath),
-  getInstallPath: () => ipcRenderer.invoke("get-install-path"),
+  pickFolder: () => ipcRenderer.invoke("pick-folder").then((r) => r.ok ? r.data : null),
+  openExternal: (url) => ipcRenderer.invoke("open-external", url).then((r) => r.ok ? r.data : null),
+  openPath: (filePath) => ipcRenderer.invoke("open-path", filePath).then((r) => r.ok ? r.data : null),
+  getInstallPath: () => ipcRenderer.invoke("get-install-path").then((r) => r.ok ? r.data : null),
   openPathAtTime: (filePath, seconds, subtitlePaths) =>
     ipcRenderer.invoke("open-path-at-time", {
       filePath,
       seconds,
       subtitlePaths,
-    }),
+    }).then((r) => r.ok ? r.data : null),
   pruneSubtitlePaths: (downloadId) =>
-    ipcRenderer.invoke("prune-subtitle-paths", { downloadId }),
+    ipcRenderer.invoke("prune-subtitle-paths", { downloadId }).then((r) => r.ok ? { ok: true, subtitlePaths: r.data?.subtitlePaths ?? r.subtitlePaths } : { ok: false, error: r.error?.message }),
 
   // Close confirmation
   onConfirmClose: (cb) => {
@@ -59,12 +59,12 @@ contextBridge.exposeInMainWorld("electron", {
   respondClose: (confirm) => ipcRenderer.send("close-response", confirm),
 
   // anime episode resolver (main-process HTTP, bypasses CORS/bot-check)
-  resolveAllManga: (args) => ipcRenderer.invoke("resolve-allmanga", args),
-  setPlayerVideo: (args) => ipcRenderer.invoke("set-player-video", args),
-  debugAllManga: (args) => ipcRenderer.invoke("debug-allmanga", args),
+  resolveAllManga: (args) => ipcRenderer.invoke("resolve-allmanga", args).then((r) => r.ok ? { ok: true, ...r.data } : { ok: false, error: r.error?.message }),
+  setPlayerVideo: (args) => ipcRenderer.invoke("set-player-video", args).then((r) => r.ok ? { ok: true, ...r.data } : { ok: false, error: r.error?.message }),
+  debugAllManga: (args) => ipcRenderer.invoke("debug-allmanga", args).then((r) => r.ok ? r.data : null),
 
   // App version (from package.json via Electron)
-  getAppVersion: () => ipcRenderer.invoke("get-app-version"),
+  getAppVersion: () => ipcRenderer.invoke("get-app-version").then((r) => r.ok ? r.data : ""),
 
   // Webview fullscreen
   onWebviewEnterFullscreen: (cb) => {
@@ -90,7 +90,7 @@ contextBridge.exposeInMainWorld("electron", {
   },
   offBlockedUpdate: (h) =>
     ipcRenderer.removeListener("blocked-stats-update", h),
-  getBlockStats: () => ipcRenderer.invoke("get-block-stats"),
+  getBlockStats: () => ipcRenderer.invoke("get-block-stats").then((r) => r.ok ? r.data : { total: 0, domains: {} }),
 
   // Desktop notifications (triggered from renderer, executed in main)
   showNotification: ({ title, body, silent }) =>
@@ -103,34 +103,36 @@ contextBridge.exposeInMainWorld("electron", {
   playerStopped: () => ipcRenderer.send("player-stopped"),
 
   // Storage cleaning
-  getCacheSize: () => ipcRenderer.invoke("get-cache-size"),
-  getDownloadsSize: () => ipcRenderer.invoke("get-downloads-size"),
-  clearAppCache: () => ipcRenderer.invoke("clear-app-cache"),
+  getCacheSize: () => ipcRenderer.invoke("get-cache-size").then((r) => r.ok ? r.data : 0),
+  getDownloadsSize: () => ipcRenderer.invoke("get-downloads-size").then((r) => r.ok ? r.data : { bytes: 0 }),
+  clearAppCache: () => ipcRenderer.invoke("clear-app-cache").then((r) => r.ok ? r.data : null),
   queryVideoProgress: (webContentsId) =>
-    ipcRenderer.invoke("query-video-progress", webContentsId),
-  clearWatchData: () => ipcRenderer.invoke("clear-watch-data"),
-  deleteAllDownloads: () => ipcRenderer.invoke("delete-all-downloads"),
-  resetApp: () => ipcRenderer.invoke("reset-app"),
+    ipcRenderer.invoke("query-video-progress", webContentsId).then((r) => r.ok ? r.data : null),
+  autoplayVideo: (webContentsId) =>
+    ipcRenderer.invoke("autoplay-video", webContentsId).then((r) => r.ok ? r.data : false),
+  clearWatchData: () => ipcRenderer.invoke("clear-watch-data").then((r) => r.ok ? { ok: true } : { ok: false, error: r.error?.message }),
+  deleteAllDownloads: () => ipcRenderer.invoke("delete-all-downloads").then((r) => r.ok ? { ok: true, ...r.data } : { ok: false, error: r.error?.message }),
+  resetApp: () => ipcRenderer.invoke("reset-app").then((r) => r.ok ? { ok: true } : { ok: false, error: r.error?.message }),
   // Subtitles
-  searchSubtitles: (args) => ipcRenderer.invoke("search-subtitles", args),
-  getSubtitleUrl: (args) => ipcRenderer.invoke("get-subtitle-url", args),
+  searchSubtitles: (args) => ipcRenderer.invoke("search-subtitles", args).then((r) => r.ok ? { ok: true, results: r.data } : { ok: false, error: r.error?.message }),
+  getSubtitleUrl: (args) => ipcRenderer.invoke("get-subtitle-url", args).then((r) => r.ok ? { ok: true, ...r.data } : { ok: false, error: r.error?.message }),
   downloadSubtitlesForFile: (args) =>
-    ipcRenderer.invoke("download-subtitles-for-file", args),
+    ipcRenderer.invoke("download-subtitles-for-file", args).then((r) => r.ok ? { ok: true, ...r.data } : { ok: false, error: r.error?.message }),
   deleteSubtitleFile: (args) =>
-    ipcRenderer.invoke("delete-subtitle-file", args),
+    ipcRenderer.invoke("delete-subtitle-file", args).then((r) => r.ok ? { ok: true } : { ok: false, error: r.error?.message }),
   // Wyzie API key redemption
-  wyzieOpenRedeem: () => ipcRenderer.invoke("wyzie-open-redeem"),
-  wyzieValidateKey: (key) => ipcRenderer.invoke("wyzie-validate-key", key),
+  wyzieOpenRedeem: () => ipcRenderer.invoke("wyzie-open-redeem").then((r) => r.ok ? { ok: true, ...r.data } : { ok: false, error: r.error?.message, cancelled: r.cancelled, timeout: r.timeout }),
+  wyzieValidateKey: (key) => ipcRenderer.invoke("wyzie-validate-key", key).then((r) => r.ok ? { ok: true } : { ok: false, error: r.error?.message }),
   // Secure key store (OS-encrypted via safeStorage)
   secureGet: (key) =>
-    ipcRenderer.invoke("secure-store-get", key).then((r) => r.value ?? null),
+    ipcRenderer.invoke("secure-store-get", key).then((r) => r.ok ? (r.data?.value ?? r.value ?? null) : null),
   secureSet: (key, value) =>
     ipcRenderer.invoke("secure-store-set", { key, value }),
   // Picture-in-Picture pop-out (full player UI, only one stream active at a time)
   openPipWindow: (url, title) =>
     ipcRenderer.invoke("open-pip-window", { url, title }),
   closePipWindow: () => ipcRenderer.invoke("close-pip-window"),
-  getPipWebContentsId: () => ipcRenderer.invoke("get-pip-webcontents-id"),
+  getPipWebContentsId: () => ipcRenderer.invoke("get-pip-webcontents-id").then((r) => r.ok ? r.data : null),
   onPipOpened: (cb) => {
     const h = () => cb();
     ipcRenderer.on("pip-window-opened", h);
@@ -147,8 +149,8 @@ contextBridge.exposeInMainWorld("electron", {
   windowMinimize: () => ipcRenderer.invoke("window-minimize"),
   windowToggleMaximize: () => ipcRenderer.invoke("window-toggle-maximize"),
   windowClose: () => ipcRenderer.invoke("window-close"),
-  windowIsMaximized: () => ipcRenderer.invoke("window-is-maximized"),
-  getPlatform: () => ipcRenderer.invoke("get-platform"),
+  windowIsMaximized: () => ipcRenderer.invoke("window-is-maximized").then((r) => r.ok ? r.data : false),
+  getPlatform: () => ipcRenderer.invoke("get-platform").then((r) => r.ok ? r.data : process.platform),
   // Push events: main process emits "window-maximized" with a boolean payload
   onWindowMaximize: (cb) => {
     const h = (_, v) => cb(v);
@@ -160,10 +162,10 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("get-video-duration", filePath),
   setZoomFactor: (factor) => webFrame.setZoomFactor(factor),
   // Auto-updater
-  detectUpdateFormat: () => ipcRenderer.invoke("detect-update-format"),
+  detectUpdateFormat: () => ipcRenderer.invoke("detect-update-format").then((r) => r.ok ? r.data : null),
   downloadAndInstallUpdate: (args) =>
-    ipcRenderer.invoke("download-and-install-update", args),
-  cancelUpdate: () => ipcRenderer.invoke("cancel-update"),
+    ipcRenderer.invoke("download-and-install-update", args).then((r) => r.ok ? { ok: true, ...r.data } : { ok: false, error: r.error?.message }),
+  cancelUpdate: () => ipcRenderer.invoke("cancel-update").then((r) => r.ok ? r.data : null),
   onUpdateProgress: (cb) => {
     const h = (_, data) => cb(data);
     ipcRenderer.on("update-progress", h);
@@ -172,7 +174,7 @@ contextBridge.exposeInMainWorld("electron", {
   offUpdateProgress: (h) => ipcRenderer.removeListener("update-progress", h),
   // Scheduled backups
   getScheduledBackupSettings: () =>
-    ipcRenderer.invoke("get-scheduled-backup-settings"),
+    ipcRenderer.invoke("get-scheduled-backup-settings").then((r) => r.ok ? r.data : null),
   setScheduledBackupSettings: (settings) =>
     ipcRenderer.invoke("set-scheduled-backup-settings", settings),
   performScheduledBackup: (args) =>
@@ -184,4 +186,18 @@ contextBridge.exposeInMainWorld("electron", {
   },
   offScheduledBackupRequested: (h) =>
     ipcRenderer.removeListener("scheduled-backup-requested", h),
+
+  // Discord RPC
+  setDiscordActivity: (activity) => ipcRenderer.invoke("set-discord-activity", activity),
+  clearDiscordActivity: () => ipcRenderer.invoke("clear-discord-activity"),
+
+  // OAuth Loopback Server
+  startOauthServer: () => ipcRenderer.invoke("start-oauth-server"),
+  stopOauthServer: () => ipcRenderer.invoke("stop-oauth-server"),
+  onOauthCallback: (cb) => {
+    const h = (_, data) => cb(data);
+    ipcRenderer.on("oauth-callback", h);
+    return h;
+  },
+  offOauthCallback: (h) => ipcRenderer.removeListener("oauth-callback", h),
 });

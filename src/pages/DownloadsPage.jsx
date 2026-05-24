@@ -11,6 +11,28 @@ import {
 import { storage, isElectron, STORAGE_KEYS } from "../utils/storage";
 import SubtitleDownloaderModal from "../components/SubtitleDownloaderModal";
 import { imgUrl } from "../utils/api";
+import AsyncBoundary from "../components/AsyncBoundary";
+
+const PROGRESS_TIME_PREFIX = "dlTime_";
+const DURATION_PREFIX = "dlDur_";
+
+function secsToHms(s) {
+  if (!s || s <= 0) return null;
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = Math.floor(s % 60);
+  return [h, m, sec].map((v) => String(v).padStart(2, "0")).join(":");
+}
+
+function hmsToSecs(str) {
+  const parts = str.trim().split(":").map(Number);
+  if (parts.some(isNaN)) return null;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 1 && parts[0] >= 0) return parts[0];
+  return null;
+}
+
 
 const STATUS_CLASS = {
   downloading: "dl-status--downloading",
@@ -100,6 +122,25 @@ export default function DownloadsPage({
   const [localFiles, setLocalFiles] = useState(
     () => storage.get("localFiles") || [],
   );
+
+  const downloadsState = useMemo(() => {
+    if (downloads.length === 0 && localFiles.length === 0) {
+      return "empty";
+    }
+    return null;
+  }, [downloads.length, localFiles.length]);
+
+  const emptyComponent = (
+    <div className="empty-state">
+      <DownloadIcon />
+      <h3>No downloads yet</h3>
+      <p>
+        Start a download from any movie or series page, or scan a folder
+        to find local video files.
+      </p>
+    </div>
+  );
+
   const [scanning, setScanning] = useState(false);
   const [scanFolder, setScanFolder] = useState(
     () => storage.get("downloadPath") || "",
@@ -554,100 +595,89 @@ export default function DownloadsPage({
           </div>
         </div>
 
-        {allLocalItems.length > 0 ? (
-          <div className="dl-page__local-list">
-            {allLocalItems.map((dl) => {
-              const isHighlighted = dl.id === highlightId;
-              const watchedKey =
-                dl.mediaType === "movie"
-                  ? `movie_${dl.tmdbId || dl.mediaId}`
-                  : dl.mediaType === "tv" &&
-                      dl.tmdbId &&
-                      dl.season &&
-                      dl.episode
-                    ? `tv_${dl.tmdbId}_s${dl.season}e${dl.episode}`
-                    : null;
-              return (
-                <LocalFileCard
-                  key={dl.id}
-                  dl={dl}
-                  fileExists={dl.isLocalOnly ? true : fileExistsCache[dl.id]}
-                  onWatch={(subtitlePaths) =>
-                    subtitlePaths?.length > 0
-                      ? window.electron.openPathAtTime(
-                          dl.filePath,
-                          0,
-                          subtitlePaths,
-                        )
-                      : window.electron.openPath(dl.filePath)
-                  }
-                  onHistory={onHistory}
-                  onShowFolder={() =>
-                    window.electron?.showInFolder(dl.filePath)
-                  }
-                  onDelete={dl.isLocalOnly ? undefined : () => handleDelete(dl)}
-                  isHighlighted={isHighlighted}
-                  highlightRef={isHighlighted ? highlightRef : null}
-                  watchedKey={watchedKey}
-                  isWatched={watchedKey ? !!watched?.[watchedKey] : false}
-                  onMarkWatched={
-                    watchedKey ? () => onMarkWatched?.(watchedKey) : null
-                  }
-                  onMarkUnwatched={
-                    watchedKey ? () => onMarkUnwatched?.(watchedKey) : null
-                  }
-                  onSelect={
-                    dl.tmdbId && dl.mediaType
-                      ? () =>
-                          onSelect?.({
-                            id: dl.tmdbId,
-                            media_type: dl.mediaType,
-                            title:
-                              dl.mediaType === "movie" ? dl.name : undefined,
-                            name: dl.mediaType === "tv" ? dl.name : undefined,
-                            poster_path: dl.posterPath || null,
-                            season:
-                              dl.mediaType === "tv" && dl.season != null
-                                ? Number(dl.season)
-                                : undefined,
-                          })
-                      : null
-                  }
-                  onOpenSubtitleDownloader={
-                    dl.tmdbId ? () => setSubtitleModalDl(dl) : null
-                  }
-                  onOpenLog={
-                    dl.logPath && dl.status === "error"
-                      ? () => window.electron.openPath(dl.logPath)
-                      : null
-                  }
-                />
-              );
-            })}
-          </div>
-        ) : (
-          <div className="dl-page__empty-text">
-            {q
-              ? `No downloads match "${searchQuery}".`
-              : downloads.length === 0 && localFiles.length === 0
-                ? "No local files yet. Scan a folder or start a download."
-                : "No completed downloads or local files found."}
-          </div>
-        )}
+        <AsyncBoundary state={downloadsState} emptyComponent={emptyComponent}>
+          {allLocalItems.length > 0 ? (
+            <div className="dl-page__local-list">
+              {allLocalItems.map((dl) => {
+                const isHighlighted = dl.id === highlightId;
+                const watchedKey =
+                  dl.mediaType === "movie"
+                    ? `movie_${dl.tmdbId || dl.mediaId}`
+                    : dl.mediaType === "tv" &&
+                        dl.tmdbId &&
+                        dl.season &&
+                        dl.episode
+                      ? `tv_${dl.tmdbId}_s${dl.season}e${dl.episode}`
+                      : null;
+                return (
+                  <LocalFileCard
+                    key={dl.id}
+                    dl={dl}
+                    fileExists={dl.isLocalOnly ? true : fileExistsCache[dl.id]}
+                    onWatch={(subtitlePaths) =>
+                      subtitlePaths?.length > 0
+                        ? window.electron.openPathAtTime(
+                            dl.filePath,
+                            0,
+                            subtitlePaths,
+                          )
+                        : window.electron.openPath(dl.filePath)
+                    }
+                    onHistory={onHistory}
+                    onShowFolder={() =>
+                      window.electron?.showInFolder(dl.filePath)
+                    }
+                    onDelete={dl.isLocalOnly ? undefined : () => handleDelete(dl)}
+                    isHighlighted={isHighlighted}
+                    highlightRef={isHighlighted ? highlightRef : null}
+                    watchedKey={watchedKey}
+                    isWatched={watchedKey ? !!watched?.[watchedKey] : false}
+                    onMarkWatched={
+                      watchedKey ? () => onMarkWatched?.(watchedKey) : null
+                    }
+                    onMarkUnwatched={
+                      watchedKey ? () => onMarkUnwatched?.(watchedKey) : null
+                    }
+                    onSelect={
+                      dl.tmdbId && dl.mediaType
+                        ? () =>
+                            onSelect?.({
+                              id: dl.tmdbId,
+                              media_type: dl.mediaType,
+                              title:
+                                dl.mediaType === "movie" ? dl.name : undefined,
+                              name: dl.mediaType === "tv" ? dl.name : undefined,
+                              poster_path: dl.posterPath || null,
+                              season:
+                                dl.mediaType === "tv" && dl.season != null
+                                  ? Number(dl.season)
+                                  : undefined,
+                            })
+                        : null
+                    }
+                    onOpenSubtitleDownloader={
+                      dl.tmdbId ? () => setSubtitleModalDl(dl) : null
+                    }
+                    onOpenLog={
+                      dl.logPath && dl.status === "error"
+                        ? () => window.electron.openPath(dl.logPath)
+                        : null
+                    }
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            <div className="dl-page__empty-text">
+              {q
+                ? `No downloads match "${searchQuery}".`
+                : downloads.length === 0 && localFiles.length === 0
+                  ? "No local files yet. Scan a folder or start a download."
+                  : "No completed downloads or local files found."}
+            </div>
+          )}
+        </AsyncBoundary>
       </div>
-
-      {downloads.length === 0 &&
-        localFiles.length === 0 &&
-        active.length === 0 && (
-          <div className="empty-state">
-            <DownloadIcon />
-            <h3>No downloads yet</h3>
-            <p>
-              Start a download from any movie or series page, or scan a folder
-              to find local video files.
-            </p>
-          </div>
-        )}
     </div>
   );
 }
@@ -725,26 +755,7 @@ const ActiveCard = memo(function ActiveCard({ dl, onDelete, onSelect }) {
   );
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function secsToHms(s) {
-  if (!s || s <= 0) return null;
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = Math.floor(s % 60);
-  return [h, m, sec].map((v) => String(v).padStart(2, "0")).join(":");
-}
 
-function hmsToSecs(str) {
-  const parts = str.trim().split(":").map(Number);
-  if (parts.some(isNaN)) return null;
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  if (parts.length === 1 && parts[0] >= 0) return parts[0];
-  return null;
-}
-
-const PROGRESS_TIME_PREFIX = "dlTime_";
-const DURATION_PREFIX = "dlDur_";
 
 // ── Local file / completed download card ──────────────────────────────────────
 const LocalFileCard = memo(function LocalFileCard({

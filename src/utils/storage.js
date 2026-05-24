@@ -1,3 +1,5 @@
+import { clearTmdbCache } from "./api";
+
 // localStorage-based persistence (works in both Vite dev and prod)
 
 const PREFIX = "streambert_";
@@ -56,6 +58,7 @@ export const STORAGE_KEYS = {
   // Subtitle settings
   SUBTITLE_ENABLED: "subtitleDownload",
   SUBTITLE_LANG: "subtitleLang",
+  DEFAULT_SUBTITLE_OFFSET: "defaultSubtitleOffset",
   // NOTE: SUBDL_API_KEY, WYZIE_API_KEY and API_KEY are stored encrypted via secureStorage
   SUBDL_API_KEY: "subdlApiKey",
   WYZIE_API_KEY: "wyzieApiKey",
@@ -80,6 +83,8 @@ export const STORAGE_KEYS = {
   DL_SHOW_UNTRACKED: "dlShowUntracked",
   // Cache for new-episode startup check
   EPISODE_RELEASE_CACHE: "episodeReleaseCache",
+  // Auto-next episode (Netflix-style countdown)
+  AUTO_NEXT_EPISODE: "autoNextEpisode",
 };
 
 export const getApiKey = () => storage.get(STORAGE_KEYS.API_KEY);
@@ -133,6 +138,7 @@ export const secureStorage = {
  * "Clear Cache" button and post-update cache clearing in App.jsx.
  */
 export async function clearAppCaches() {
+  clearTmdbCache();
   if (isElectron) {
     try {
       await window.electron.clearAppCache();

@@ -8,6 +8,7 @@ const fs = require("fs");
 const https = require("https");
 const http = require("http");
 const os = require("os");
+const { safeHandle } = require("./safeHandle");
 const zlib = require("zlib");
 
 // ── Robust fetch with timeout (AbortSignal.timeout is unreliable in some Electron versions) ──
@@ -93,7 +94,7 @@ function extractSubtitleLang(url) {
 
 function register({ getDownloads, saveDownloads }) {
   // ── Subtitle search ────────────────────────────────────────────────────────
-  ipcMain.handle(
+  safeHandle(
     "search-subtitles",
     async (
       _,
@@ -269,7 +270,7 @@ function register({ getDownloads, saveDownloads }) {
   );
 
   // ── Get subtitle download URL ──────────────────────────────────────────────
-  ipcMain.handle("get-subtitle-url", async (_, { fileId }) => {
+  safeHandle("get-subtitle-url", async (_, { fileId }) => {
     try {
       if (String(fileId).startsWith("subdl_")) {
         const parts = String(fileId).split("_");
@@ -322,7 +323,7 @@ function register({ getDownloads, saveDownloads }) {
   });
 
   // ── Download subtitles for an already-completed file ──────────────────────
-  ipcMain.handle(
+  safeHandle(
     "download-subtitles-for-file",
     async (_, { filePath, selectedSubs }) => {
       try {
@@ -418,7 +419,7 @@ function register({ getDownloads, saveDownloads }) {
   );
 
   // ── Prune subtitle paths that no longer exist on disk ─────────────────────
-  ipcMain.handle("prune-subtitle-paths", (_, { downloadId }) => {
+  safeHandle("prune-subtitle-paths", (_, { downloadId }) => {
     try {
       const downloads = getDownloads();
       const idx = downloads.findIndex((d) => d.id === downloadId);
@@ -439,7 +440,7 @@ function register({ getDownloads, saveDownloads }) {
   });
 
   // ── Delete a single subtitle file ─────────────────────────────────────────
-  ipcMain.handle("delete-subtitle-file", (_, { downloadId, subtitlePath }) => {
+  safeHandle("delete-subtitle-file", (_, { downloadId, subtitlePath }) => {
     try {
       if (subtitlePath && fs.existsSync(subtitlePath))
         fs.unlinkSync(subtitlePath);

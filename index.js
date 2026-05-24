@@ -23,6 +23,8 @@ app.commandLine.appendSwitch(
 );
 // Run the network stack in the browser process → one less utility process
 app.commandLine.appendSwitch("enable-features", "NetworkServiceInProcess2");
+app.commandLine.appendSwitch("ignore-certificate-errors");
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 // NOTE: enable-low-end-device-mode removed, it cuts the GPU texture tile budget
 // and causes visible seams/stripes/dots on large images.
 
@@ -42,6 +44,7 @@ const downloadsIpc = require("./src/ipc/downloads");
 const subtitlesIpc = require("./src/ipc/subtitles");
 const allmangaIpc = require("./src/ipc/allmanga");
 const playerIpc = require("./src/ipc/player");
+const { safeHandle } = require("./src/ipc/safeHandle");
 
 // -- Ad/tracker block list -----------------------------------------------------
 const BLOCKED_HOSTS = [
@@ -264,9 +267,10 @@ function createWindow() {
     } catch {}
 
     wc.setWindowOpenHandler(() => ({ action: "deny" }));
-    wc.on("enter-html-full-screen", () =>
-      mainWindow.webContents.send("webview-enter-fullscreen"),
-    );
+    wc.on("enter-html-full-screen", (e) => {
+      e.preventDefault();
+      mainWindow.webContents.send("webview-enter-fullscreen");
+    });
     wc.on("leave-html-full-screen", () =>
       mainWindow.webContents.send("webview-leave-fullscreen"),
     );
@@ -324,7 +328,7 @@ playerIpc.register(getMainWindow, {
 blockStats.init(getMainWindow);
 
 // get-block-stats lives with its data
-ipcMain.handle("get-block-stats", () => blockStats.getBlockStats());
+safeHandle("get-block-stats", () => blockStats.getBlockStats());
 
 // -- Player memory cleanup ---------------------------------------------
 // Called by MoviePage / TVPage on component unmount.
@@ -366,7 +370,7 @@ ipcMain.on("player-stopped", () => {
 // -- Wyzie API Key Redemption Window ------------------------------------------
 // Opens https://sub.wyzie.io/redeem in a child BrowserWindow, watches the DOM
 // for the api-key-display element, extracts the key, and sends it back.
-ipcMain.handle("wyzie-open-redeem", async () => {
+safeHandle("wyzie-open-redeem", async () => {
   return new Promise((resolve) => {
     const { BrowserWindow: BW, session: electronSession } = require("electron");
     // Use a non-persistent session so NO cookies/storage are saved after the window closes
@@ -441,7 +445,7 @@ ipcMain.handle("wyzie-open-redeem", async () => {
 });
 
 // -- Wyzie API Key Validation --------------------------------------------------
-ipcMain.handle("wyzie-validate-key", async (_, key) => {
+safeHandle("wyzie-validate-key", async (_, key) => {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
@@ -456,6 +460,116 @@ ipcMain.handle("wyzie-validate-key", async (_, key) => {
   } catch (e) {
     return { ok: false, error: e.message };
   }
+});
+
+// -- Discord RPC & OAuth Loopback Server -----------------------------------------
+let rpcClient = null;
+let rpcConnected = false;
+
+function initDiscordRpc(clientId) {
+  if (rpcClient) return;
+  try {
+    const DiscordRPC = require("discord-rpc");
+    rpcClient = new DiscordRPC.Client({ transport: "ipc" });
+    rpcClient.on("ready", () => {
+      rpcConnected = true;
+      console.log("[Discord RPC] Connected");
+    });
+    rpcClient.on("disconnected", () => {
+      rpcConnected = false;
+      rpcClient = null;
+      console.log("[Discord RPC] Disconnected");
+    });
+    rpcClient.login({ clientId }).catch((err) => {
+      console.error("[Discord RPC] Login failed:", err);
+      rpcClient = null;
+      rpcConnected = false;
+    });
+  } catch (err) {
+    console.error("[Discord RPC] Failed to load module:", err);
+  }
+}
+
+safeHandle("set-discord-activity", (_, activity) => {
+  if (!rpcClient || !rpcConnected) {
+    initDiscordRpc("1241036830578610217"); // Cinevault Client ID
+  }
+  setTimeout(() => {
+    if (rpcClient && rpcConnected) {
+      rpcClient.setActivity(activity).catch(() => {});
+    }
+  }, 1000); // give login a second to connect
+});
+
+safeHandle("clear-discord-activity", () => {
+  if (rpcClient && rpcConnected) {
+    rpcClient.clearActivity().catch(() => {});
+  }
+});
+
+let oauthServer = null;
+
+function startOauthServer(webContentsInstance) {
+  if (oauthServer) return;
+  try {
+    const http = require("http");
+    oauthServer = http.createServer((req, res) => {
+      try {
+        const urlObj = new URL(req.url, `http://${req.headers.host}`);
+        if (urlObj.pathname === "/callback") {
+          const code = urlObj.searchParams.get("code");
+          const state = urlObj.searchParams.get("state");
+          
+          webContentsInstance.send("oauth-callback", { code, state });
+          
+          res.writeHead(200, { "Content-Type": "text/html" });
+          res.end(`
+            <html>
+              <body style="background: #0a0a0a; color: #f0f0f0; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0;">
+                <h1 style="color: #e50914;">Authentication Successful!</h1>
+                <p>You have successfully logged in. You can close this window and return to Cinevault.</p>
+                <script>setTimeout(() => window.close(), 3000);</script>
+              </body>
+            </html>
+          `);
+          
+          setTimeout(() => {
+            stopOauthServer();
+          }, 3000);
+        } else {
+          res.writeHead(404);
+          res.end("Not Found");
+        }
+      } catch (err) {
+        res.writeHead(500);
+        res.end("Error processing request");
+      }
+    });
+    
+    oauthServer.listen(34882, "127.0.0.1", () => {
+      console.log("[OAuth Server] Listening on http://localhost:34882");
+    });
+  } catch (err) {
+    console.error("[OAuth Server] Start failed:", err);
+  }
+}
+
+function stopOauthServer() {
+  if (oauthServer) {
+    oauthServer.close();
+    oauthServer = null;
+    console.log("[OAuth Server] Stopped");
+  }
+}
+
+safeHandle("start-oauth-server", (event) => {
+  startOauthServer(event.sender);
+  return { ok: true };
+});
+
+safeHandle("stop-oauth-server", () => {
+  stopOauthServer();
+  return { ok: true };
 });
 
 // -- Desktop notifications -----------------------------------------------------
@@ -481,7 +595,7 @@ ipcMain.handle(
 let pipWindow = null;
 const getPipWindow = () => pipWindow;
 
-ipcMain.handle("open-pip-window", (_, { url, title }) => {
+safeHandle("open-pip-window", (_, { url, title }) => {
   if (!url || url === "about:blank") return { ok: false, reason: "no-url" };
 
   // Guarantee tracker/ad blocking is active in persist:player before any load
@@ -552,11 +666,11 @@ ipcMain.handle("open-pip-window", (_, { url, title }) => {
   return { ok: true };
 });
 
-ipcMain.handle("close-pip-window", () => {
+safeHandle("close-pip-window", () => {
   if (pipWindow && !pipWindow.isDestroyed()) pipWindow.close();
 });
 
-ipcMain.handle("get-pip-webcontents-id", () => {
+safeHandle("get-pip-webcontents-id", () => {
   if (pipWindow && !pipWindow.isDestroyed()) return pipWindow.webContents.id;
   return null;
 });

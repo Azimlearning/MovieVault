@@ -7,6 +7,8 @@ import {
   useCallback,
   memo,
 } from "react";
+import AsyncBoundary from "../components/AsyncBoundary";
+import { sourceQueue } from "../utils/sourceQueue";
 import {
   EPISODE_GROUP_IDS,
   applyEpisodeMapping,
@@ -365,6 +367,8 @@ export default function TVPage({
   onGoToDownloads,
 }) {
   const [details, setDetails] = useState(null);
+  const [detailsError, setDetailsError] = useState(null);
+  const [seasonError, setSeasonError] = useState(null);
   const [seasonData, setSeasonData] = useState(null);
   const [failedSeasons, setFailedSeasons] = useState(() => new Set()); // season numbers which give 404 on TMDB
   const [selectedSeason, setSelectedSeason] = useState(() =>
@@ -411,6 +415,12 @@ export default function TVPage({
   const [pipOpen, setPipOpen] = useState(false);
   const pipUrlRef = useRef(null);
   const pipWebContentsIdRef = useRef(null); // cached WebContents ID of the pop-out window
+  
+  const [failoverQueue, setFailoverQueue] = useState([]);
+  const [currentQueueIndex, setCurrentQueueIndex] = useState(0);
+  const [loadingStatus, setLoadingStatus] = useState("");
+  const [failoverError, setFailoverError] = useState(false);
+  const timeoutRef = useRef(null);
   const [menuPos, setMenuPos] = useState(null);
   // AniSkip
   const [skipTimings, setSkipTimings] = useState(null); // { intro?, outro? }
@@ -418,35 +428,25 @@ export default function TVPage({
   const [introSkipMode] = useState(
     () => storage.get(STORAGE_KEYS.INTRO_SKIP_MODE) || "off",
   );
+  const [autoNextEp, setAutoNextEp] = useState(null); // next episode for auto-play
+  const [autoNextCountdown, setAutoNextCountdown] = useState(null); // seconds remaining
+  const autoNextTimerRef = useRef(null);
+  const [autoNextEnabled] = useState(
+    () => storage.get(STORAGE_KEYS.AUTO_NEXT_EPISODE) !== false,
+  );
   const sourceRef = useRef(null);
   const playerWrapRef = useRef(null);
   const webviewRef = useRef(null);
   // Always-current refs for interval callbacks, avoids stale closures without restarting the interval
   const saveProgressRef = useRef(saveProgress);
-  saveProgressRef.current = saveProgress;
+
   const onMarkWatchedRef = useRef(onMarkWatched);
   onMarkWatchedRef.current = onMarkWatched;
-
-  // Derived: detect anime before any effects so effects can use it
-  const isAnime = useMemo(
-    () => isAnimeContent(item, details),
-    [item.id, details],
-  );
 
   const [downloaderFolder, setDownloaderFolder] = useState(
     () => storage.get("downloaderFolder") || "",
   );
   const [epMenu, setEpMenu] = useState(null); // { x, y, pk }
-
-  // Blocked request stats, reset key includes season+episode so counter resets on each ep
-  const blockedResetKey = `${item.id}_s${selectedSeason}_e${selectedEp?.episode_number ?? 0}`;
-  const {
-    sessionTotal: blockedSession,
-    alltimeTotal: blockedAlltime,
-    showModal: showBlockedModal,
-    setShowModal: setShowBlockedModal,
-    getSessionDomains: getBlockedDomains,
-  } = useBlockedStats(blockedResetKey);
 
   // Age rating
   const [rating, setRating] = useState({ cert: null, minAge: null });
@@ -460,17 +460,724 @@ export default function TVPage({
     () => storage.get("watchedThreshold") ?? 20,
   );
   const autoMarkedRef = useRef(false);
+  const autoNextTriggeredRef = useRef(false);
   const lastKnownTimeRef = useRef(0);
   const durationRef = useRef(0); // tracked for AniSkip progress bar markers
   const seekBackCooldownRef = useRef(0);
+  const hasSeekedSavedTimeRef = useRef(false);
 
+  const [episodeQuery, setEpisodeQuery] = useState("");
+  const episodeSearchInputRef = useRef(null);
+
+  const [subtitleOffset, setSubtitleOffset] = useState(0);
+  const [feedbackText, setFeedbackText] = useState(null);
+  const feedbackTimerRef = useRef(null);
+
+  // Blocked request stats, reset key includes season+episode so counter resets on each ep
+  const blockedResetKey = `${item.id}_s${selectedSeason}_e${selectedEp?.episode_number ?? 0}`;
+  const {
+    sessionTotal: blockedSession,
+    alltimeTotal: blockedAlltime,
+    showModal: showBlockedModal,
+    setShowModal: setShowBlockedModal,
+    getSessionDomains: getBlockedDomains,
+  } = useBlockedStats(blockedResetKey);
+
+  const d = details || item;
+  const title = d.name || d.title;
+  const year = (d.first_air_date || "").slice(0, 4);
+
+  const isAnime = useMemo(
+    () => isAnimeContent(item, details),
+    [item.id, details],
+  );
+
+  // ── Season list: prefer episode-group > AniList > TMDB ──────────────────
+  // tmdbSeasons excludes specials (season 0) (only for AniList)
+  const tmdbSeasons = useMemo(
+    () => (d.seasons || []).filter((s) => s.season_number > 0),
+    [d.seasons],
+  );
+  // tmdbSeasonsWithSpecials includes season 0 for display purposes.
+  // Excluded for anime: AllManga
+  const tmdbSeasonsWithSpecials = useMemo(() => {
+    if (isAnime) return tmdbSeasons;
+    if (failedSeasons.has(0)) return tmdbSeasons;
+    const specials = (d.seasons || []).filter((s) => s.season_number === 0);
+    return [...tmdbSeasons, ...specials];
+  }, [d.seasons, tmdbSeasons, isAnime, failedSeasons]);
+  const useAnilistSeasons = useMemo(
+    () =>
+      isAnime &&
+      anilistSeasons?.length > 0 &&
+      (tmdbSeasons.length <= 1 || anilistSeasons.length > tmdbSeasons.length),
+    [isAnime, anilistSeasons, tmdbSeasons],
+  );
+
+  // Episode-group virtual seasons (highest priority, e.g. Netflix order)
+  const episodeGroupSeasons = useMemo(() => {
+    if (!episodeGroupData?.groups) return null;
+    return [...episodeGroupData.groups]
+      .sort((a, b) => a.order - b.order)
+      .map((g, i) => ({
+        season_number: i + 1,
+        name: g.name || `Season ${i + 1}`,
+        episode_count: (g.episodes || []).length,
+      }));
+  }, [episodeGroupData]);
+
+  const seasons = useMemo(() => {
+    if (episodeGroupSeasons) return episodeGroupSeasons;
+    if (useAnilistSeasons)
+      return anilistSeasons.map((s) => ({
+        season_number: s.seasonNum,
+        name: s.title || `Season ${s.seasonNum}`,
+        episode_count: s.episodes || 0,
+      }));
+    return tmdbSeasonsWithSpecials;
+  }, [
+    episodeGroupSeasons,
+    useAnilistSeasons,
+    anilistSeasons,
+    tmdbSeasonsWithSpecials,
+  ]);
+
+  // Episodes for the currently selected season from episode group
+  const episodeGroupCurrentEpisodes = useMemo(() => {
+    if (!episodeGroupData?.groups) return null;
+    const sortedGroups = [...episodeGroupData.groups].sort(
+      (a, b) => a.order - b.order,
+    );
+    const group = sortedGroups[selectedSeason - 1];
+    if (!group) return null;
+    return [...(group.episodes || [])]
+      .sort((a, b) => a.order - b.order)
+      .map((ep, i) => ({
+        ...ep,
+        episode_number: i + 1, // display number within this group-season
+        _tmdbSeason: ep.season_number, // real TMDB season for player mapping
+        _tmdbAbsolute: ep.episode_number, // real TMDB episode for player mapping
+      }));
+  }, [episodeGroupData, selectedSeason]);
+
+  // ── Episode slice (AniList virtual seasons only) ───────────────────────────
+  const getSeasonEpisodes = useCallback(
+    (rawEpisodes) => {
+      if (!useAnilistSeasons || !rawEpisodes) return rawEpisodes;
+      if (tmdbSeasons.length > 1) return rawEpisodes;
+      let offset = 0;
+      for (const s of anilistSeasons) {
+        if (s.seasonNum < selectedSeason) offset += s.episodes || 0;
+      }
+      const count =
+        anilistSeasons.find((s) => s.seasonNum === selectedSeason)?.episodes ||
+        rawEpisodes.length;
+      return rawEpisodes.slice(offset, offset + count).map((ep, i) => ({
+        ...ep,
+        episode_number: i + 1,
+        _tmdbAbsolute: ep.episode_number,
+      }));
+    },
+    [useAnilistSeasons, tmdbSeasons.length, anilistSeasons, selectedSeason],
+  );
+
+  // ── Player episode mapping
+  const playerEp = useMemo(() => {
+    if (!selectedEp) return { season: selectedSeason, episode: undefined };
+    // In episode-group mode: use the real TMDB season/episode stored on the ep
+    const rawSeason = selectedEp._tmdbSeason ?? selectedSeason;
+    const rawEpisode = selectedEp._tmdbAbsolute ?? selectedEp.episode_number;
+    return applyEpisodeMapping(item.id, rawSeason, rawEpisode, episodeGroupMap);
+  }, [selectedEp, selectedSeason, item.id, episodeGroupMap]);
+
+  // ── Memoized current season episodes ──────────────────────────────────────
+  // While episode group or AniList data is still loading, return [] to prevent
+  // a flash of wrong TMDB episodes before the correct data arrives.
+  const episodeGroupPending = useMemo(
+    () => !!EPISODE_GROUP_IDS[Number(item.id)] && !episodeGroupData,
+    [item.id, episodeGroupData],
+  );
+  const currentSeasonEpisodes = useMemo(() => {
+    if (episodeGroupPending) return [];
+    if (anilistLoading) return [];
+    return (
+      episodeGroupCurrentEpisodes ||
+      getSeasonEpisodes(seasonData?.episodes) ||
+      []
+    );
+  }, [
+    episodeGroupPending,
+    anilistLoading,
+    episodeGroupCurrentEpisodes,
+    getSeasonEpisodes,
+    seasonData,
+  ]);
+
+  const filteredEpisodes = useMemo(() => {
+    if (!episodeQuery.trim()) return currentSeasonEpisodes;
+    const q = episodeQuery.toLowerCase().trim();
+    return currentSeasonEpisodes.filter(
+      (ep) =>
+        (ep.name || "").toLowerCase().includes(q) ||
+        String(ep.episode_number) === q
+    );
+  }, [currentSeasonEpisodes, episodeQuery]);
+
+  // ── Downloads lookup map: O(1) per episode instead of O(n) ───────────────
+  const downloadsByEpisodeKey = useMemo(() => {
+    const map = new Map();
+    for (const dl of downloads || []) {
+      if (
+        dl.mediaType === "tv" &&
+        (dl.tmdbId === item.id || dl.mediaId === item.id) &&
+        (dl.status === "completed" ||
+          dl.status === "local" ||
+          dl.status === "downloading")
+      ) {
+        map.set(`s${dl.season}e${dl.episode}`, dl);
+      }
+    }
+    return map;
+  }, [downloads, item.id]);
+
+  // Prefer AniList metadata for anime when available
+  const displaySeasonCount = useMemo(
+    () => (anilistLoading ? null : seasons.length || d.number_of_seasons || 0),
+    [anilistLoading, seasons, d.number_of_seasons],
+  );
+  const displayEpisodeCount = useMemo(
+    () =>
+      anilistLoading
+        ? null
+        : useAnilistSeasons
+          ? anilistSeasons.reduce((sum, s) => sum + (s.episodes || 0), 0)
+          : d.number_of_episodes || 0,
+    [anilistLoading, useAnilistSeasons, anilistSeasons, d.number_of_episodes],
+  );
+
+  const displayOverview = useMemo(
+    () =>
+      anilistLoading
+        ? null
+        : isAnime && anilistData?.description
+          ? cleanAnilistDescription(anilistData.description)
+          : d.overview,
+    [anilistLoading, isAnime, anilistData?.description, d.overview],
+  );
+  const displayScore = useMemo(
+    () =>
+      anilistLoading
+        ? null
+        : isAnime && anilistData?.averageScore
+          ? (anilistData.averageScore / 10).toFixed(1)
+          : d.vote_average > 0
+            ? d.vote_average.toFixed(1)
+            : null,
+    [anilistLoading, isAnime, anilistData?.averageScore, d.vote_average],
+  );
+  const displayGenres = useMemo(
+    () =>
+      anilistLoading
+        ? []
+        : isAnime && anilistData?.genres?.length
+          ? anilistData.genres.map((g, i) => ({ id: i, name: g }))
+          : d.genres || [],
+    [anilistLoading, isAnime, anilistData?.genres, d.genres],
+  );
+
+  // ── Season watched helpers ─────────────────────────────────────────────────
+  // Memoized map: seasonNum → "all" | "some" | "none"
+  // Recomputed only when watched/seasons change, not on every render.
+  const seasonWatchedMap = useMemo(() => {
+    const map = {};
+    for (const s of seasons) {
+      const num = s.season_number;
+      const count =
+        num === selectedSeason
+          ? currentSeasonEpisodes.length || s.episode_count || 0
+          : s.episode_count || 0;
+      if (!count) {
+        map[num] = "none";
+        continue;
+      }
+      let watchedCount = 0;
+      for (let i = 1; i <= count; i++) {
+        if (watched?.[`tv_${item.id}_s${num}e${i}`]) watchedCount++;
+      }
+      if (watchedCount === 0) {
+        map[num] = "none";
+      } else if (watchedCount === count) {
+        map[num] = "all";
+      } else {
+        const pct = watchedCount / count;
+        map[num] = pct < 0.375 ? "some25" : pct < 0.625 ? "some50" : "some75";
+      }
+    }
+    return map;
+  }, [seasons, selectedSeason, currentSeasonEpisodes, watched, item.id]);
+
+  const isSeasonWatched = useCallback(
+    (seasonNum) => seasonWatchedMap[seasonNum] === "all",
+    [seasonWatchedMap],
+  );
+
+  const markSeasonWatched = useCallback(
+    (seasonNum) => {
+      const seasonInfo = seasons.find((s) => s.season_number === seasonNum);
+      const episodes =
+        seasonNum === selectedSeason ? currentSeasonEpisodes : null;
+      const count = episodes?.length || seasonInfo?.episode_count || 0;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      for (let i = 1; i <= count; i++) {
+        if (episodes) {
+          const ep = episodes.find((e) => e.episode_number === i);
+          if (ep?.air_date && new Date(ep.air_date) > today) continue;
+        }
+        onMarkWatched?.(`tv_${item.id}_s${seasonNum}e${i}`);
+      }
+    },
+    [seasons, selectedSeason, currentSeasonEpisodes, item.id, onMarkWatched],
+  );
+
+  const markSeasonUnwatched = useCallback(
+    (seasonNum) => {
+      const seasonInfo = seasons.find((s) => s.season_number === seasonNum);
+      const episodes =
+        seasonNum === selectedSeason ? currentSeasonEpisodes : null;
+      const count = episodes?.length || seasonInfo?.episode_count || 0;
+      for (let i = 1; i <= count; i++) {
+        onMarkUnwatched?.(`tv_${item.id}_s${seasonNum}e${i}`);
+      }
+    },
+    [seasons, selectedSeason, currentSeasonEpisodes, item.id, onMarkUnwatched],
+  );
+
+  const currentProgressKey = selectedEp
+    ? `tv_${item.id}_s${selectedSeason}e${selectedEp.episode_number}`
+    : null;
+
+  // Check if currently-playing episode is already downloaded or downloading
+  const currentEpDownload = selectedEp
+    ? (downloadsByEpisodeKey.get(
+        `s${selectedSeason}e${selectedEp.episode_number}`,
+      ) ?? null)
+    : null;
+
+  const playEpisode = useCallback(
+    (ep) => {
+      setM3u8Url(null);
+      setInterceptedSubs([]);
+      setResolvedPlayerUrl(null);
+      setResolvingUrl(false);
+      setResolveError(null);
+      setSelectedEp(ep);
+      setPlaying(true);
+      onHistory({
+        ...d,
+        media_type: "tv",
+        season: selectedSeason,
+        episode: ep.episode_number,
+        episodeName: ep.name,
+      });
+    },
+    [d, selectedSeason, onHistory],
+  );
+
+  const handleManualSkip = useCallback(async () => {
+    if (!skipPrompt || !skipTimings?.[skipPrompt]) return;
+    const rawEnd = skipTimings[skipPrompt].endTime;
+    const endTime = Number(rawEnd);
+    if (!Number.isFinite(endTime)) return;
+    const wv = webviewRef.current;
+    if (!wv) return;
+    try {
+      await wv.executeJavaScript(
+        `(() => { const v = document.querySelector('video'); if (v) v.currentTime = ${endTime}; })()`,
+      );
+    } catch {}
+    setSkipPrompt(null);
+  }, [skipPrompt, skipTimings]);
+
+  const detailState = useMemo(() => {
+    if (loading) return "loading";
+    if (detailsError) return { loading: false, error: detailsError };
+    return null;
+  }, [loading, detailsError]);
+
+  const seasonState = useMemo(() => {
+    if (loadingSeason) return "loading";
+    if (seasonError) return { loading: false, error: seasonError };
+    if (!loadingSeason && !(seasonData?.episodes || episodeGroupCurrentEpisodes?.length)) {
+      return "empty";
+    }
+    return null;
+  }, [loadingSeason, seasonError, seasonData, episodeGroupCurrentEpisodes]);
+
+  const allMangaState = useMemo(() => {
+    if (resolvingUrl) return "loading";
+    if (resolveError) {
+      return {
+        loading: false,
+        error: {
+          code: "SCRAPER_PARSE_FAIL",
+          message: resolveError,
+        },
+      };
+    }
+    return null;
+  }, [resolvingUrl, resolveError]);
+
+  const handleRetryAllManga = useCallback(() => {
+    setResolvedPlayerUrl(null);
+    setResolveError(null);
+    setResolvingUrl(false);
+  }, []);
+  saveProgressRef.current = saveProgress;
+
+  const showFeedback = useCallback((text) => {
+    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+    setFeedbackText(text);
+    feedbackTimerRef.current = setTimeout(() => setFeedbackText(null), 2000);
+  }, []);
+
+  const changeSubtitleOffset = useCallback((delta) => {
+    setSubtitleOffset((prev) => {
+      const next = Math.max(-5.0, Math.min(5.0, parseFloat((prev + delta).toFixed(1))));
+      if (currentProgressKey) {
+        storage.set("subOffset_" + currentProgressKey, next);
+      }
+      showFeedback(`Subtitle offset: ${next > 0 ? "+" : ""}${next.toFixed(1)}s`);
+      
+      const wv = webviewRef.current;
+      if (wv) {
+        wv.executeJavaScript(`
+          (() => {
+            const v = document.querySelector('video');
+            if (!v) return;
+            if (window.__subOffset === undefined) {
+              window.__subOffset = 0;
+            }
+            const oldOffset = window.__subOffset;
+            window.__subOffset = ${next};
+            const diff = window.__subOffset - oldOffset;
+            if (diff === 0) return;
+            for (let i = 0; i < v.textTracks.length; i++) {
+              const track = v.textTracks[i];
+              if (track.cues) {
+                for (let j = 0; j < track.cues.length; j++) {
+                  const cue = track.cues[j];
+                  cue.startTime += diff;
+                  cue.endTime += diff;
+                }
+              }
+            }
+          })()
+        `).catch(() => {});
+      }
+      return next;
+    });
+  }, [currentProgressKey, showFeedback]);
+
+  // Load saved subtitle offset when starting playback
   useEffect(() => {
+    if (playing && currentProgressKey) {
+      const globalDefault = storage.get("defaultSubtitleOffset") ?? 0;
+      const savedOffset = storage.get("subOffset_" + currentProgressKey) ?? globalDefault;
+      const parsed = parseFloat(savedOffset) || 0;
+      setSubtitleOffset(parsed);
+      
+      // Inject the saved offset after 3 seconds to ensure textTracks are loaded
+      const t = setTimeout(() => {
+        const wv = webviewRef.current;
+        if (wv) {
+          wv.executeJavaScript(`
+            (() => {
+              const v = document.querySelector('video');
+              if (!v) return;
+              window.__subOffset = ${parsed};
+              for (let i = 0; i < v.textTracks.length; i++) {
+                const track = v.textTracks[i];
+                if (track.cues) {
+                  for (let j = 0; j < track.cues.length; j++) {
+                    const cue = track.cues[j];
+                    cue.startTime += ${parsed};
+                    cue.endTime += ${parsed};
+                  }
+                }
+              }
+            })()
+          `).catch(() => {});
+        }
+      }, 3500);
+      return () => clearTimeout(t);
+    }
+  }, [playing, currentProgressKey]);
+
+  const handlePlaybackKey = useCallback((key, shift, ctrl, meta, preventDefault) => {
+    const keyL = key.toLowerCase();
+
+    // 1. Global Navigation Shortcuts (Command/Control + key)
+    if (ctrl || meta) {
+      if (keyL === "k" || keyL === "f") {
+        if (preventDefault) preventDefault();
+        window.dispatchEvent(new CustomEvent("movievault:open-search"));
+        return;
+      }
+      if (key === ",") {
+        if (preventDefault) preventDefault();
+        window.dispatchEvent(new CustomEvent("movievault:open-settings"));
+        return;
+      }
+      if (keyL === "l") {
+        if (preventDefault) preventDefault();
+        window.dispatchEvent(new CustomEvent("movievault:open-library"));
+        return;
+      }
+      if (keyL === "h") {
+        if (preventDefault) preventDefault();
+        window.dispatchEvent(new CustomEvent("movievault:open-home"));
+        return;
+      }
+    }
+
+    // Focus season episode search on /
+    if (key === "/") {
+      const active = document.activeElement;
+      if (!active || !active.matches('input, textarea, [contenteditable="true"]')) {
+        if (preventDefault) preventDefault();
+        episodeSearchInputRef.current?.focus();
+        return;
+      }
+    }
+
+    // Escape: exit playback
+    if (key === "Escape") {
+      if (preventDefault) preventDefault();
+      onBack();
+      return;
+    }
+
+    const wv = webviewRef.current;
+    if (!wv) return;
+
+    // Play/Pause: Space or K
+    if (key === " " || keyL === "k") {
+      const active = document.activeElement;
+      if (active && active.matches('input, textarea, [contenteditable="true"]')) return;
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            if (v.paused) v.play();
+            else v.pause();
+            return !v.paused;
+          }
+          return null;
+        })()
+      `).then((res) => {
+        if (res !== null) showFeedback(res ? "Play" : "Pause");
+      }).catch(() => {});
+      return;
+    }
+
+    // Seek: ArrowLeft/ArrowRight (5s), J/L (10s)
+    if (key === "ArrowLeft") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.currentTime = Math.max(0, v.currentTime - 5);
+            return v.currentTime;
+          }
+          return null;
+        })()
+      `).catch(() => {});
+      return;
+    }
+    if (key === "ArrowRight") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.currentTime = Math.min(v.duration || Infinity, v.currentTime + 5);
+            return v.currentTime;
+          }
+          return null;
+        })()
+      `).catch(() => {});
+      return;
+    }
+    if (keyL === "j") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.currentTime = Math.max(0, v.currentTime - 10);
+            return v.currentTime;
+          }
+          return null;
+        })()
+      `).catch(() => {});
+      return;
+    }
+    if (keyL === "l") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.currentTime = Math.min(v.duration || Infinity, v.currentTime + 10);
+            return v.currentTime;
+          }
+          return null;
+        })()
+      `).catch(() => {});
+      return;
+    }
+
+    // Volume: ArrowUp/ArrowDown (10%)
+    if (key === "ArrowUp") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.volume = Math.max(0, Math.min(1, v.volume + 0.1));
+            v.muted = false;
+            return Math.round(v.volume * 100);
+          }
+          return null;
+        })()
+      `).then((vol) => {
+        if (vol !== null) showFeedback(`Volume: ${vol}%`);
+      }).catch(() => {});
+      return;
+    }
+    if (key === "ArrowDown") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.volume = Math.max(0, Math.min(1, v.volume - 0.1));
+            return Math.round(v.volume * 100);
+          }
+          return null;
+        })()
+      `).then((vol) => {
+        if (vol !== null) showFeedback(`Volume: ${vol}%`);
+      }).catch(() => {});
+      return;
+    }
+
+    // Mute: M
+    if (keyL === "m") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.muted = !v.muted;
+            return v.muted;
+          }
+          return null;
+        })()
+      `).then((muted) => {
+        if (muted !== null) showFeedback(muted ? "Muted" : "Unmuted");
+      }).catch(() => {});
+      return;
+    }
+
+    // Fullscreen: F
+    if (keyL === "f") {
+      if (preventDefault) preventDefault();
+      setPlayerFullscreen((prev) => {
+        const next = !prev;
+        if (next) {
+          document.documentElement.setAttribute("data-player-fullscreen", "1");
+        } else {
+          document.documentElement.removeAttribute("data-player-fullscreen");
+        }
+        return next;
+      });
+      return;
+    }
+
+    // Toggle Subtitles: C
+    if (keyL === "c") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (!v) return null;
+          let active = false;
+          for (let i = 0; i < v.textTracks.length; i++) {
+            const track = v.textTracks[i];
+            track.mode = track.mode === 'showing' ? 'hidden' : 'showing';
+            active = track.mode === 'showing';
+          }
+          return active;
+        })()
+      `).then((active) => {
+        if (active !== null) showFeedback(active ? "Subtitles On" : "Subtitles Off");
+      }).catch(() => {});
+      return;
+    }
+
+    // Subtitle offset: G / H
+    if (keyL === "g" || keyL === "h") {
+      if (preventDefault) preventDefault();
+      const delta = keyL === "g" ? (shift ? -1.0 : -0.1) : (shift ? 1.0 : 0.1);
+      changeSubtitleOffset(delta);
+      return;
+    }
+
+    // Next Episode: Shift + N
+    if (key === "N" && shift) {
+      if (preventDefault) preventDefault();
+      const currentEpNum = selectedEp?.episode_number;
+      const nextEp = currentSeasonEpisodes.find((e) => e.episode_number === currentEpNum + 1);
+      if (nextEp) {
+        playEpisode(nextEp);
+        showFeedback(`Playing Episode ${nextEp.episode_number}`);
+      }
+      return;
+    }
+
+    // Prev Episode: Shift + P
+    if (key === "P" && shift) {
+      if (preventDefault) preventDefault();
+      const currentEpNum = selectedEp?.episode_number;
+      const prevEp = currentSeasonEpisodes.find((e) => e.episode_number === currentEpNum - 1);
+      if (prevEp) {
+        playEpisode(prevEp);
+        showFeedback(`Playing Episode ${prevEp.episode_number}`);
+      }
+      return;
+    }
+
+    // Skip Intro: S
+    if (keyL === "s") {
+      if (preventDefault) preventDefault();
+      handleManualSkip();
+      return;
+    }
+  }, [onBack, changeSubtitleOffset, showFeedback, selectedEp, currentSeasonEpisodes, playEpisode, handleManualSkip]);
+
+  const fetchDetails = useCallback(() => {
     let mounted = true;
     setLoading(true);
+    setDetailsError(null);
     tmdbFetch(`/tv/${item.id}`, apiKey)
       .then((d) => {
         if (!mounted) return;
         setDetails(d);
+        setDetailsError(null);
         // Only fall back to first season when no specific season was requested
         if (item.season == null) {
           const first =
@@ -478,8 +1185,13 @@ export default function TVPage({
           if (first) setSelectedSeason(first.season_number);
         }
       })
-      .catch(() => {
-        if (mounted) setDetails(item);
+      .catch((err) => {
+        if (mounted) {
+          setDetailsError({
+            code: err.code || "UNKNOWN_ERROR",
+            message: err.message || "Failed to load TV show details",
+          });
+        }
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -488,6 +1200,10 @@ export default function TVPage({
       mounted = false;
     };
   }, [item.id, apiKey]);
+
+  useEffect(() => {
+    fetchDetails();
+  }, [fetchDetails]);
 
   // ── Fetch episode group mapping if this show has one ─────────────────────
   useEffect(() => {
@@ -542,7 +1258,7 @@ export default function TVPage({
     };
   }, [item.id, apiKey, ratingCountry]);
 
-  useEffect(() => {
+  const fetchSeasonData = useCallback(() => {
     if (!apiKey || !item.id) return;
     // Episode group data already contains all episodes -> no TMDB season fetch
     if (episodeGroupData) {
@@ -550,9 +1266,11 @@ export default function TVPage({
       setPlaying(false);
       setSeasonData(null);
       setLoadingSeason(false);
+      setSeasonError(null);
       return;
     }
     setLoadingSeason(true);
+    setSeasonError(null);
     setSelectedEp(null);
     setPlaying(false);
     setSeasonData(null); // clear stale episodes immediately
@@ -564,11 +1282,18 @@ export default function TVPage({
     let mounted = true;
     tmdbFetch(`/tv/${item.id}/season/${tmdbSeasonToFetch}`, apiKey)
       .then((d) => {
-        if (mounted) setSeasonData(d);
+        if (mounted) {
+          setSeasonData(d);
+          setSeasonError(null);
+        }
       })
-      .catch(() => {
+      .catch((err) => {
         if (mounted) {
           setSeasonData(null);
+          setSeasonError({
+            code: err.code || "UNKNOWN_ERROR",
+            message: err.message || `Failed to load Season ${selectedSeason} details`,
+          });
           // Record this season as unavailable (e.g. TMDB has no episode data for it)
           if (selectedSeason === 0) {
             setFailedSeasons((prev) => new Set([...prev, selectedSeason]));
@@ -581,7 +1306,11 @@ export default function TVPage({
     return () => {
       mounted = false;
     };
-  }, [item.id, selectedSeason, apiKey, anilistSeasons]);
+  }, [item.id, selectedSeason, apiKey, anilistSeasons, episodeGroupData, isAnime, tmdbSeasons]);
+
+  useEffect(() => {
+    fetchSeasonData();
+  }, [fetchSeasonData]);
 
   // Reset m3u8 URL, subtitle URL and source menu whenever the series, episode, or source changes
   useEffect(() => {
@@ -736,279 +1465,34 @@ export default function TVPage({
     return () => window.electron.offSubtitleFound(handler);
   }, []);
 
-  const d = details || item;
-  const title = d.name || d.title;
-  const year = (d.first_air_date || "").slice(0, 4);
 
-  // ── Season list: prefer episode-group > AniList > TMDB ──────────────────
-  // tmdbSeasons excludes specials (season 0) (only for AniList)
-  const tmdbSeasons = useMemo(
-    () => (d.seasons || []).filter((s) => s.season_number > 0),
-    [d.seasons],
-  );
-  // tmdbSeasonsWithSpecials includes season 0 for display purposes.
-  // Excluded for anime: AllManga
-  const tmdbSeasonsWithSpecials = useMemo(() => {
-    if (isAnime) return tmdbSeasons;
-    if (failedSeasons.has(0)) return tmdbSeasons;
-    const specials = (d.seasons || []).filter((s) => s.season_number === 0);
-    return [...tmdbSeasons, ...specials];
-  }, [d.seasons, tmdbSeasons, isAnime, failedSeasons]);
-  const useAnilistSeasons = useMemo(
-    () =>
-      isAnime &&
-      anilistSeasons?.length > 0 &&
-      (tmdbSeasons.length <= 1 || anilistSeasons.length > tmdbSeasons.length),
-    [isAnime, anilistSeasons, tmdbSeasons],
-  );
 
-  // Episode-group virtual seasons (highest priority, e.g. Netflix order)
-  const episodeGroupSeasons = useMemo(() => {
-    if (!episodeGroupData?.groups) return null;
-    return [...episodeGroupData.groups]
-      .sort((a, b) => a.order - b.order)
-      .map((g, i) => ({
-        season_number: i + 1,
-        name: g.name || `Season ${i + 1}`,
-        episode_count: (g.episodes || []).length,
-      }));
-  }, [episodeGroupData]);
-
-  const seasons = useMemo(() => {
-    if (episodeGroupSeasons) return episodeGroupSeasons;
-    if (useAnilistSeasons)
-      return anilistSeasons.map((s) => ({
-        season_number: s.seasonNum,
-        name: s.title || `Season ${s.seasonNum}`,
-        episode_count: s.episodes || 0,
-      }));
-    return tmdbSeasonsWithSpecials;
-  }, [
-    episodeGroupSeasons,
-    useAnilistSeasons,
-    anilistSeasons,
-    tmdbSeasonsWithSpecials,
-  ]);
-
-  // Episodes for the currently selected season from episode group
-  const episodeGroupCurrentEpisodes = useMemo(() => {
-    if (!episodeGroupData?.groups) return null;
-    const sortedGroups = [...episodeGroupData.groups].sort(
-      (a, b) => a.order - b.order,
-    );
-    const group = sortedGroups[selectedSeason - 1];
-    if (!group) return null;
-    return [...(group.episodes || [])]
-      .sort((a, b) => a.order - b.order)
-      .map((ep, i) => ({
-        ...ep,
-        episode_number: i + 1, // display number within this group-season
-        _tmdbSeason: ep.season_number, // real TMDB season for player mapping
-        _tmdbAbsolute: ep.episode_number, // real TMDB episode for player mapping
-      }));
-  }, [episodeGroupData, selectedSeason]);
-
-  // ── Episode slice (AniList virtual seasons only) ───────────────────────────
-  const getSeasonEpisodes = useCallback(
-    (rawEpisodes) => {
-      if (!useAnilistSeasons || !rawEpisodes) return rawEpisodes;
-      if (tmdbSeasons.length > 1) return rawEpisodes;
-      let offset = 0;
-      for (const s of anilistSeasons) {
-        if (s.seasonNum < selectedSeason) offset += s.episodes || 0;
-      }
-      const count =
-        anilistSeasons.find((s) => s.seasonNum === selectedSeason)?.episodes ||
-        rawEpisodes.length;
-      return rawEpisodes.slice(offset, offset + count).map((ep, i) => ({
-        ...ep,
-        episode_number: i + 1,
-        _tmdbAbsolute: ep.episode_number,
-      }));
-    },
-    [useAnilistSeasons, tmdbSeasons.length, anilistSeasons, selectedSeason],
-  );
-
-  // ── Player episode mapping
-  const playerEp = useMemo(() => {
-    if (!selectedEp) return { season: selectedSeason, episode: undefined };
-    // In episode-group mode: use the real TMDB season/episode stored on the ep
-    const rawSeason = selectedEp._tmdbSeason ?? selectedSeason;
-    const rawEpisode = selectedEp._tmdbAbsolute ?? selectedEp.episode_number;
-    return applyEpisodeMapping(item.id, rawSeason, rawEpisode, episodeGroupMap);
-  }, [selectedEp, selectedSeason, item.id, episodeGroupMap]);
-
-  // ── Memoized current season episodes ──────────────────────────────────────
-  // While episode group or AniList data is still loading, return [] to prevent
-  // a flash of wrong TMDB episodes before the correct data arrives.
-  const episodeGroupPending = useMemo(
-    () => !!EPISODE_GROUP_IDS[Number(item.id)] && !episodeGroupData,
-    [item.id, episodeGroupData],
-  );
-  const currentSeasonEpisodes = useMemo(() => {
-    if (episodeGroupPending) return [];
-    if (anilistLoading) return [];
-    return (
-      episodeGroupCurrentEpisodes ||
-      getSeasonEpisodes(seasonData?.episodes) ||
-      []
-    );
-  }, [
-    episodeGroupPending,
-    anilistLoading,
-    episodeGroupCurrentEpisodes,
-    getSeasonEpisodes,
-    seasonData,
-  ]);
-
-  // ── Downloads lookup map: O(1) per episode instead of O(n) ───────────────
-  const downloadsByEpisodeKey = useMemo(() => {
-    const map = new Map();
-    for (const dl of downloads || []) {
-      if (
-        dl.mediaType === "tv" &&
-        (dl.tmdbId === item.id || dl.mediaId === item.id) &&
-        (dl.status === "completed" ||
-          dl.status === "local" ||
-          dl.status === "downloading")
-      ) {
-        map.set(`s${dl.season}e${dl.episode}`, dl);
-      }
-    }
-    return map;
-  }, [downloads, item.id]);
-
-  // Prefer AniList metadata for anime when available
-  const displaySeasonCount = useMemo(
-    () => (anilistLoading ? null : seasons.length || d.number_of_seasons || 0),
-    [anilistLoading, seasons, d.number_of_seasons],
-  );
-  const displayEpisodeCount = useMemo(
-    () =>
-      anilistLoading
-        ? null
-        : useAnilistSeasons
-          ? anilistSeasons.reduce((sum, s) => sum + (s.episodes || 0), 0)
-          : d.number_of_episodes || 0,
-    [anilistLoading, useAnilistSeasons, anilistSeasons, d.number_of_episodes],
-  );
-
-  const displayOverview = useMemo(
-    () =>
-      anilistLoading
-        ? null
-        : isAnime && anilistData?.description
-          ? cleanAnilistDescription(anilistData.description)
-          : d.overview,
-    [anilistLoading, isAnime, anilistData?.description, d.overview],
-  );
-  const displayScore = useMemo(
-    () =>
-      anilistLoading
-        ? null
-        : isAnime && anilistData?.averageScore
-          ? (anilistData.averageScore / 10).toFixed(1)
-          : d.vote_average > 0
-            ? d.vote_average.toFixed(1)
-            : null,
-    [anilistLoading, isAnime, anilistData?.averageScore, d.vote_average],
-  );
-  const displayGenres = useMemo(
-    () =>
-      anilistLoading
-        ? []
-        : isAnime && anilistData?.genres?.length
-          ? anilistData.genres.map((g, i) => ({ id: i, name: g }))
-          : d.genres || [],
-    [anilistLoading, isAnime, anilistData?.genres, d.genres],
-  );
-
-  // ── Season watched helpers ─────────────────────────────────────────────────
-  // Memoized map: seasonNum → "all" | "some" | "none"
-  // Recomputed only when watched/seasons change, not on every render.
-  const seasonWatchedMap = useMemo(() => {
-    const map = {};
-    for (const s of seasons) {
-      const num = s.season_number;
-      const count =
-        num === selectedSeason
-          ? currentSeasonEpisodes.length || s.episode_count || 0
-          : s.episode_count || 0;
-      if (!count) {
-        map[num] = "none";
-        continue;
-      }
-      let watchedCount = 0;
-      for (let i = 1; i <= count; i++) {
-        if (watched?.[`tv_${item.id}_s${num}e${i}`]) watchedCount++;
-      }
-      if (watchedCount === 0) {
-        map[num] = "none";
-      } else if (watchedCount === count) {
-        map[num] = "all";
-      } else {
-        const pct = watchedCount / count;
-        map[num] = pct < 0.375 ? "some25" : pct < 0.625 ? "some50" : "some75";
-      }
-    }
-    return map;
-  }, [seasons, selectedSeason, currentSeasonEpisodes, watched, item.id]);
-
-  const isSeasonWatched = useCallback(
-    (seasonNum) => seasonWatchedMap[seasonNum] === "all",
-    [seasonWatchedMap],
-  );
-
-  const markSeasonWatched = useCallback(
-    (seasonNum) => {
-      const seasonInfo = seasons.find((s) => s.season_number === seasonNum);
-      const episodes =
-        seasonNum === selectedSeason ? currentSeasonEpisodes : null;
-      const count = episodes?.length || seasonInfo?.episode_count || 0;
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      for (let i = 1; i <= count; i++) {
-        if (episodes) {
-          const ep = episodes.find((e) => e.episode_number === i);
-          if (ep?.air_date && new Date(ep.air_date) > today) continue;
-        }
-        onMarkWatched?.(`tv_${item.id}_s${seasonNum}e${i}`);
-      }
-    },
-    [seasons, selectedSeason, currentSeasonEpisodes, item.id, onMarkWatched],
-  );
-
-  const markSeasonUnwatched = useCallback(
-    (seasonNum) => {
-      const seasonInfo = seasons.find((s) => s.season_number === seasonNum);
-      const episodes =
-        seasonNum === selectedSeason ? currentSeasonEpisodes : null;
-      const count = episodes?.length || seasonInfo?.episode_count || 0;
-      for (let i = 1; i <= count; i++) {
-        onMarkUnwatched?.(`tv_${item.id}_s${seasonNum}e${i}`);
-      }
-    },
-    [seasons, selectedSeason, currentSeasonEpisodes, item.id, onMarkUnwatched],
-  );
-
-  const currentProgressKey = selectedEp
-    ? `tv_${item.id}_s${selectedSeason}e${selectedEp.episode_number}`
-    : null;
-
-  // Check if currently-playing episode is already downloaded or downloading
-  const currentEpDownload = selectedEp
-    ? (downloadsByEpisodeKey.get(
-        `s${selectedSeason}e${selectedEp.episode_number}`,
-      ) ?? null)
-    : null;
-
-  // Reset auto-mark guard when episode changes
+  // Reset auto-mark guard and auto-next banner when episode changes
   useEffect(() => {
     autoMarkedRef.current = false;
+    autoNextTriggeredRef.current = false;
     lastKnownTimeRef.current = 0;
     seekBackCooldownRef.current = 0;
     durationRef.current = 0;
+    hasSeekedSavedTimeRef.current = false;
+    setAutoNextEp(null);
+    setAutoNextCountdown(null);
+    if (autoNextTimerRef.current) {
+      clearInterval(autoNextTimerRef.current);
+      autoNextTimerRef.current = null;
+    }
   }, [currentProgressKey]);
+
+  // Auto-play episode from continue watching / select result
+  useEffect(() => {
+    if (item.episode != null && currentSeasonEpisodes.length > 0 && !selectedEp && !playing) {
+      const epNum = Number(item.episode);
+      const ep = currentSeasonEpisodes.find((e) => e.episode_number === epNum);
+      if (ep) {
+        playEpisode(ep);
+      }
+    }
+  }, [item.episode, currentSeasonEpisodes, selectedEp, playing, playEpisode]);
 
   // Show loader instantly when playback starts
   useEffect(() => {
@@ -1038,18 +1522,142 @@ export default function TVPage({
 
   // Attach webview load events so we know when the new source has painted.
   // Also poll for video duration so AniSkip markers appear without waiting for the 5s progress tick.
+  const handleFailover = useCallback(() => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    
+    setCurrentQueueIndex((prevIndex) => {
+      const nextIndex = prevIndex + 1;
+      if (nextIndex < failoverQueue.length) {
+        return nextIndex;
+      } else {
+        setFailoverError(true);
+        setWebviewLoading(false);
+        setLoadingStatus("");
+        return prevIndex;
+      }
+    });
+  }, [failoverQueue]);
+
+  // Initialize queue when playing starts
+  useEffect(() => {
+    if (!playing) {
+      setFailoverQueue([]);
+      setCurrentQueueIndex(0);
+      setLoadingStatus("");
+      setFailoverError(false);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      return;
+    }
+
+    const initialSource = storage.get("playerSource") || NON_ANIME_DEFAULT_SOURCE;
+    if (sourceIsAsync(initialSource)) {
+      setPlayerSource(initialSource);
+      return;
+    }
+
+    const q = sourceQueue.getQueue(item.id, selectedSeason, selectedEp?.episode_number);
+    setFailoverQueue(q);
+    setCurrentQueueIndex(0);
+    setPlayerSource(q[0]);
+    setFailoverError(false);
+  }, [playing, item.id, selectedSeason, selectedEp?.episode_number]);
+
+  // Handle active queue index changes
+  useEffect(() => {
+    if (!playing || failoverQueue.length === 0) return;
+    const currentSourceId = failoverQueue[currentQueueIndex];
+    if (!currentSourceId) return;
+
+    setPlayerSource(currentSourceId);
+    
+    const sourceLabel = PLAYER_SOURCES.find((s) => s.id === currentSourceId)?.label || currentSourceId;
+    setLoadingStatus(currentQueueIndex === 0 ? `Loading from ${sourceLabel}…` : `Trying ${sourceLabel}…`);
+
+    const timeoutSeconds = sourceQueue.getSourceTimeout();
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    
+    timeoutRef.current = setTimeout(() => {
+      console.log(`Source ${currentSourceId} timed out after ${timeoutSeconds}s.`);
+      handleFailover();
+    }, timeoutSeconds * 1000);
+
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, [playing, failoverQueue, currentQueueIndex, handleFailover]);
+
+  // Attach webview load events so we know when the new source has painted
   useEffect(() => {
     if (!playing) return;
     const wv = webviewRef.current;
     if (!wv) return;
-    const done = () => setWebviewLoading(false);
-    wv.addEventListener("did-finish-load", done);
-    wv.addEventListener("did-fail-load", done);
+    
+    const handleFinished = async () => {
+      if (sourceIsAsync(playerSource)) {
+        setWebviewLoading(false);
+        return;
+      }
+
+      try {
+        const title = await wv.executeJavaScript("document.title");
+        const bodyText = await wv.executeJavaScript("document.body.innerText");
+        
+        const isErrorTitle = title && (title.includes("502") || title.includes("504") || title.includes("Server Error") || title.includes("Cloudflare"));
+        const isErrorBody = bodyText && (bodyText.includes("502 Bad Gateway") || bodyText.includes("504 Gateway Timeout") || bodyText.includes("Server Error") || bodyText.includes("Cloudflare"));
+        
+        if (isErrorTitle || isErrorBody) {
+          console.log(`Webview loaded successfully but contains error content:`, title, bodyText);
+          handleFailover();
+          return;
+        }
+      } catch (err) {
+        console.warn("Could not inspect webview page content:", err);
+      }
+
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      setWebviewLoading(false);
+      setLoadingStatus("");
+      
+      const activeSourceId = failoverQueue[currentQueueIndex] || playerSource;
+      sourceQueue.saveLastGoodSource(item.id, selectedSeason, selectedEp?.episode_number, activeSourceId);
+
+      const runAutoplay = () => {
+        if (window.electron?.autoplayVideo && wv && !wv.isDestroyed?.()) {
+          window.electron.autoplayVideo(wv.getWebContentsId()).catch(() => {});
+        }
+      };
+      runAutoplay();
+      setTimeout(runAutoplay, 500);
+      setTimeout(runAutoplay, 1500);
+      setTimeout(runAutoplay, 3000);
+    };
+
+    const handleFailed = () => {
+      if (sourceIsAsync(playerSource)) {
+        setWebviewLoading(false);
+        return;
+      }
+      handleFailover();
+    };
+
+    const handleWebviewInput = (e) => {
+      handlePlaybackKey(
+        e.key,
+        e.shift,
+        e.control,
+        e.meta,
+        () => e.preventDefault()
+      );
+    };
+
+    wv.addEventListener("did-finish-load", handleFinished);
+    wv.addEventListener("did-fail-load", handleFailed);
+    wv.addEventListener("before-input-event", handleWebviewInput);
 
     // Poll up to 30s for video duration (metadata may load after buffering starts)
-    let attempts = 0;
+    let durationAttempts = 0;
     const pollDuration = setInterval(async () => {
-      if (durationRef.current > 0 || attempts++ > 30) {
+      if (durationRef.current > 0 || durationAttempts++ > 30) {
         clearInterval(pollDuration);
         return;
       }
@@ -1059,7 +1667,6 @@ export default function TVPage({
         );
         if (dur) {
           durationRef.current = dur;
-          // let markers re-render
           setSkipTimings((t) => (t ? { ...t } : t));
           clearInterval(pollDuration);
         }
@@ -1067,11 +1674,28 @@ export default function TVPage({
     }, 1000);
 
     return () => {
-      wv.removeEventListener("did-finish-load", done);
-      wv.removeEventListener("did-fail-load", done);
+      wv.removeEventListener("did-finish-load", handleFinished);
+      wv.removeEventListener("did-fail-load", handleFailed);
+      wv.removeEventListener("before-input-event", handleWebviewInput);
       clearInterval(pollDuration);
     };
-  }, [playing, playerSource, item.id, selectedEp?.episode_number]);
+  }, [playing, playerSource, item.id, selectedSeason, selectedEp?.episode_number, failoverQueue, currentQueueIndex, handleFailover, handlePlaybackKey]);
+
+  // Window keydown listener for cases where focus is not trapped in webview
+  useEffect(() => {
+    if (!playing) return;
+    const handleWinKey = (e) => {
+      handlePlaybackKey(
+        e.key,
+        e.shiftKey,
+        e.ctrlKey,
+        e.metaKey,
+        () => e.preventDefault()
+      );
+    };
+    window.addEventListener("keydown", handleWinKey);
+    return () => window.removeEventListener("keydown", handleWinKey);
+  }, [playing, handlePlaybackKey]);
 
   // ── AniSkip: fetch timings when episode changes ───────────────────────────
   useEffect(() => {
@@ -1098,22 +1722,6 @@ export default function TVPage({
     introSkipMode,
   ]);
 
-  // ── AniSkip: auto-skip or show manual prompt ─────────────────
-  // ── AniSkip: manual skip handler ─────────────────────────────────────────
-  const handleManualSkip = useCallback(async () => {
-    if (!skipPrompt || !skipTimings?.[skipPrompt]) return;
-    const rawEnd = skipTimings[skipPrompt].endTime;
-    const endTime = Number(rawEnd);
-    if (!Number.isFinite(endTime)) return;
-    const wv = webviewRef.current;
-    if (!wv) return;
-    try {
-      await wv.executeJavaScript(
-        `(() => { const v = document.querySelector('video'); if (v) v.currentTime = ${endTime}; })()`,
-      );
-    } catch {}
-    setSkipPrompt(null);
-  }, [skipPrompt, skipTimings]);
 
   // Use webview before-input-event so Enter reaches main-ui before the webview
   // handles it (avoids the webview's Space/Enter play-pause intercepting it).
@@ -1223,6 +1831,26 @@ export default function TVPage({
             durationRef.current = result.duration;
             const ct = result.currentTime;
 
+            // Seek to saved position on first detection
+            if (!hasSeekedSavedTimeRef.current) {
+              const savedTime = storage.get("dlTime_" + currentProgressKey) || 0;
+              if (savedTime > 5 && savedTime < result.duration - 15) {
+                hasSeekedSavedTimeRef.current = true;
+                try {
+                  await wv.executeJavaScript(`
+                    (() => {
+                      const v = document.querySelector('video')
+                      if (v) v.currentTime = ${savedTime}
+                    })()
+                  `);
+                  lastKnownTimeRef.current = savedTime;
+                  return;
+                } catch {}
+              } else {
+                hasSeekedSavedTimeRef.current = true;
+              }
+            }
+
             // ── Resolution-change reset detection ──────────────────────────
             // Videasy resets to 0 on quality change. We only seek back if:
             // - ct is near zero (≤5s)
@@ -1258,19 +1886,77 @@ export default function TVPage({
               lastKnownTimeRef.current = ct;
             }
             const p = Math.floor((ct / result.duration) * 100);
-            saveProgressRef.current(currentProgressKey, Math.min(p, 100));
+            saveProgressRef.current(currentProgressKey, Math.min(p, 100), {
+              item,
+              season: selectedSeason,
+              episode: selectedEp?.episode_number,
+              position: ct,
+              duration: result.duration,
+              source: playerSource,
+              episodeTitle: selectedEp?.name
+            });
             // Also persist actual seconds so DownloadsPage can show resume position
             storage.set("dlTime_" + currentProgressKey, Math.floor(ct));
 
-            // Auto-mark watched when remaining time ≤ threshold
+            // Auto-mark watched when remaining time ≤ threshold or pct >= 90
             const remaining = result.duration - ct;
+            const pctVal = Math.min(p, 100);
+
+            // Show "Up Next" banner when ≤30s remain and there's a next episode
+            const currentEpNum = selectedEp?.episode_number;
+            const nextEpCandidate = currentSeasonEpisodes.find(e => e.episode_number === currentEpNum + 1);
+            if (remaining > 45) {
+              autoNextTriggeredRef.current = false;
+            }
+            if (autoNextEnabled && nextEpCandidate && remaining > 0 && remaining <= 30 && !autoNextTriggeredRef.current) {
+              autoNextTriggeredRef.current = true;
+              setAutoNextEp(nextEpCandidate);
+              const countdownSecs = Math.max(1, Math.round(Math.min(remaining, 15)));
+              setAutoNextCountdown(prev => {
+                if (prev === null) return countdownSecs;
+                return prev; // don't reset if already counting
+              });
+            }
+
             if (
               !autoMarkedRef.current &&
-              remaining <= watchedThreshold &&
+              (remaining <= watchedThreshold || pctVal >= 90) &&
               remaining >= 0
             ) {
               autoMarkedRef.current = true;
               onMarkWatchedRef.current?.(currentProgressKey);
+
+              // Find next episode for auto-progression
+              const nextEp = currentSeasonEpisodes.find(e => e.episode_number === currentEpNum + 1);
+              if (nextEp) {
+                const nextKey = `tv_${item.id}_s${selectedSeason}e${nextEp.episode_number}`;
+                saveProgressRef.current(nextKey, 0, {
+                  item,
+                  season: selectedSeason,
+                  episode: nextEp.episode_number,
+                  position: 0,
+                  duration: 0,
+                  source: playerSource,
+                  isNextEpisode: true,
+                  episodeTitle: nextEp.name
+                });
+              } else {
+                const nextSeasonNum = selectedSeason + 1;
+                const nextSeason = seasons.find(s => s.season_number === nextSeasonNum);
+                if (nextSeason) {
+                  const nextKey = `tv_${item.id}_s${nextSeasonNum}e1`;
+                  saveProgressRef.current(nextKey, 0, {
+                    item,
+                    season: nextSeasonNum,
+                    episode: 1,
+                    position: 0,
+                    duration: 0,
+                    source: playerSource,
+                    isNextEpisode: true,
+                    episodeTitle: "Episode 1"
+                  });
+                }
+              }
             }
           }
         } catch {}
@@ -1290,7 +1976,57 @@ export default function TVPage({
     currentProgressKey,
     watchedThreshold,
     progressViaFrames,
+    autoNextEnabled,
+    currentSeasonEpisodes,
+    seasons,
+    selectedSeason,
+    selectedEp,
+    item,
   ]);
+
+  // Auto-next: start a clean countdown when a next episode is queued.
+  // Counts DOWN every second; plays at 0.
+  useEffect(() => {
+    if (!autoNextEp) {
+      // Clear any lingering timer when banner is dismissed or episode changes
+      if (autoNextTimerRef.current) {
+        clearInterval(autoNextTimerRef.current);
+        autoNextTimerRef.current = null;
+      }
+      setAutoNextCountdown(null);
+      return;
+    }
+
+    // Banner just appeared — start fresh countdown from the initial value
+    // (autoNextCountdown was already set by the progress interval)
+    autoNextTimerRef.current = setInterval(() => {
+      setAutoNextCountdown(prev => {
+        if (prev === null) return null;
+        if (prev <= 1) return 0; // stop at 0, trigger below
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      if (autoNextTimerRef.current) {
+        clearInterval(autoNextTimerRef.current);
+        autoNextTimerRef.current = null;
+      }
+    };
+  }, [autoNextEp]); // restart only when next-ep changes
+
+  // Play when countdown reaches 0
+  useEffect(() => {
+    if (autoNextCountdown === 0 && autoNextEp) {
+      if (autoNextTimerRef.current) {
+        clearInterval(autoNextTimerRef.current);
+        autoNextTimerRef.current = null;
+      }
+      playEpisode(autoNextEp);
+      setAutoNextEp(null);
+      setAutoNextCountdown(null);
+    }
+  }, [autoNextCountdown, autoNextEp, playEpisode]);
 
   // Skip backward/forward by N seconds via webview JS injection
   const seekBy = useCallback(async (seconds) => {
@@ -1334,26 +2070,6 @@ export default function TVPage({
     };
   }, [playing, playerSource]);
 
-  const playEpisode = useCallback(
-    (ep) => {
-      setM3u8Url(null);
-      setInterceptedSubs([]);
-      setResolvedPlayerUrl(null);
-      setResolvingUrl(false);
-      setResolveError(null);
-      setSelectedEp(ep);
-      setPlaying(true);
-      onHistory({
-        ...d,
-        media_type: "tv",
-        season: selectedSeason,
-        episode: ep.episode_number,
-        episodeName: ep.name,
-      });
-      // d and selectedSeason are stable within a season view; onHistory is useCallback in App
-    },
-    [d, selectedSeason, onHistory],
-  );
 
   const handleSetDownloaderFolder = useCallback((folder) => {
     setDownloaderFolder(folder);
@@ -1418,14 +2134,8 @@ export default function TVPage({
 
   return (
     <div className="fade-in">
-      {loading && (
-        <div className="loader">
-          <div className="spinner" />
-        </div>
-      )}
-      {!loading && (
-        <>
-          <div className="detail-hero">
+      <AsyncBoundary state={detailState} onRetry={fetchDetails}>
+        <div className="detail-hero">
             <div
               className="detail-bg"
               style={{
@@ -1588,7 +2298,7 @@ export default function TVPage({
                     <span style={{ fontSize: 14, color: "var(--text2)" }}>
                       {resolvingUrl
                         ? "Looking up episode on AllManga…"
-                        : `Loading ${PLAYER_SOURCES.find((s) => s.id === playerSource)?.label ?? "source"}…`}
+                        : loadingStatus || `Loading ${PLAYER_SOURCES.find((s) => s.id === playerSource)?.label ?? "source"}…`}
                     </span>
                   </div>
                 )}
@@ -1618,6 +2328,70 @@ export default function TVPage({
                     <span style={{ fontSize: 12, color: "var(--text3)" }}>
                       Try a different source, or switch sub/dub.
                     </span>
+                  </div>
+                )}
+                {/* Failover Error Card */}
+                {failoverError && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      zIndex: 10,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: "rgba(0,0,0,0.92)",
+                      gap: 16,
+                      padding: 24,
+                      borderRadius: "inherit",
+                    }}
+                  >
+                    <span style={{ fontSize: 48 }}>⚠️</span>
+                    <h3 style={{ margin: 0, fontSize: 18, color: "var(--text)" }}>All Sources Failed</h3>
+                    <p style={{ margin: 0, color: "var(--text3)", fontSize: 13, maxWidth: 400, textAlign: "center", lineHeight: 1.5 }}>
+                      We tried all available video sources but none resolved successfully.
+                    </p>
+                    <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => {
+                          setFailoverError(false);
+                          setWebviewLoading(true);
+                          setCurrentQueueIndex(0);
+                        }}
+                      >
+                        Retry
+                      </button>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => {
+                          const btn = document.querySelector(".player-source-btn");
+                          if (btn) btn.click();
+                        }}
+                      >
+                        Switch Source Manually
+                      </button>
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => {
+                          const logs = storage.get("brokenSourceReports") || [];
+                          logs.push({
+                            tmdbId: item.id,
+                            title: item.title || item.name,
+                            type: "tv",
+                            season: selectedSeason,
+                            episode: selectedEp?.episode_number,
+                            ts: Date.now(),
+                            sourcesTried: failoverQueue
+                          });
+                          storage.set("brokenSourceReports", logs);
+                          alert("Report saved to Settings -> Diagnostics.");
+                        }}
+                      >
+                        Report Broken
+                      </button>
+                    </div>
                   </div>
                 )}
                 {/* Pop-out active: main stream paused, pop-out has real player */}
@@ -1665,13 +2439,42 @@ export default function TVPage({
                     </button>
                   </div>
                 )}
-                <webview
-                  ref={webviewRef}
-                  src={
-                    pipOpen
-                      ? "about:blank"
-                      : isAsync
-                        ? resolvedPlayerUrl || "about:blank"
+                {isAsync ? (
+                  <AsyncBoundary state={allMangaState} onRetry={handleRetryAllManga}>
+                    <webview
+                      ref={webviewRef}
+                      src={
+                        pipOpen
+                          ? "about:blank"
+                          : resolvedPlayerUrl || "about:blank"
+                      }
+                      partition="persist:player"
+                      allowpopups="false"
+                      sandbox="allow-scripts allow-same-origin allow-forms"
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        width: "100%",
+                        height: "100%",
+                        border: "none",
+                        outline: "none",
+                        boxShadow: "none",
+                        background: "black",
+                        zIndex: 1,
+                        visibility:
+                          webviewLoading || !resolvedPlayerUrl
+                            ? "hidden"
+                            : "visible",
+                      }}
+                      tabIndex={-1}
+                    />
+                  </AsyncBoundary>
+                ) : (
+                  <webview
+                    ref={webviewRef}
+                    src={
+                      pipOpen
+                        ? "about:blank"
                         : getSourceUrl(
                             playerSource,
                             "tv",
@@ -1679,26 +2482,25 @@ export default function TVPage({
                             playerEp.season,
                             playerEp.episode,
                           )
-                  }
-                  partition="persist:player"
-                  allowpopups="false"
-                  sandbox="allow-scripts allow-same-origin allow-forms"
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    width: "100%",
-                    height: "100%",
-                    border: "none",
-                    outline: "none",
-                    boxShadow: "none",
-                    background: "black",
-                    visibility:
-                      webviewLoading || (isAsync && !resolvedPlayerUrl)
-                        ? "hidden"
-                        : "visible",
-                  }}
-                  tabIndex={-1}
-                />
+                    }
+                    partition="persist:player"
+                    allowpopups="false"
+                    sandbox="allow-scripts allow-same-origin allow-forms"
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      border: "none",
+                      outline: "none",
+                      boxShadow: "none",
+                      background: "black",
+                      zIndex: 1,
+                      visibility: webviewLoading ? "hidden" : "visible",
+                    }}
+                    tabIndex={-1}
+                  />
+                )}
                 {/* Left-side overlay button group, flex row, no fixed px offsets */}
                 <div className="player-overlay-group">
                   <button
@@ -1803,7 +2605,12 @@ export default function TVPage({
                         onClick={() => {
                           setShowSourceMenu(false);
                           if (src.id === playerSource) return;
+                          // Manual override: reset failover queue with just the selected source
+                          setFailoverQueue([src.id]);
+                          setCurrentQueueIndex(0);
                           setPlayerSource(src.id);
+                          setFailoverError(false);
+                          setWebviewLoading(true);
                           storage.set("playerSource", src.id);
                           setM3u8Url(null);
                           setInterceptedSubs([]);
@@ -1872,6 +2679,84 @@ export default function TVPage({
 
                 {/* Skip controls are injected directly into the webview DOM*/}
 
+                {/* ── Auto-Next Episode Banner (Netflix-style) ────────────────── */}
+                {autoNextEp && autoNextCountdown !== null && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      bottom: 72,
+                      right: 24,
+                      zIndex: 99999,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-end",
+                      gap: 8,
+                      animation: "slideDown 0.3s ease",
+                    }}
+                  >
+                    <div
+                      style={{
+                        background: "rgba(10,10,10,0.92)",
+                        border: "1px solid rgba(255,255,255,0.15)",
+                        borderRadius: 12,
+                        padding: "14px 18px",
+                        backdropFilter: "blur(12px)",
+                        WebkitBackdropFilter: "blur(12px)",
+                        minWidth: 260,
+                        maxWidth: 320,
+                        boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+                      }}
+                    >
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text3)", letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
+                        Up Next
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        E{autoNextEp.episode_number}: {autoNextEp.name}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 12 }}>
+                        Playing in {autoNextCountdown}s…
+                      </div>
+                      {/* Progress bar */}
+                      <div style={{ height: 2, background: "rgba(255,255,255,0.1)", borderRadius: 1, marginBottom: 12, overflow: "hidden" }}>
+                        <div
+                          style={{
+                            height: "100%",
+                            background: "var(--red)",
+                            borderRadius: 1,
+                            width: `${(1 - autoNextCountdown / 15) * 100}%`,
+                            transition: "width 1s linear",
+                          }}
+                        />
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                          className="btn btn-primary"
+                          style={{ flex: 1, justifyContent: "center", fontSize: 13, padding: "7px 12px" }}
+                          onClick={() => {
+                            if (autoNextTimerRef.current) clearInterval(autoNextTimerRef.current);
+                            playEpisode(autoNextEp);
+                            setAutoNextEp(null);
+                            setAutoNextCountdown(null);
+                          }}
+                        >
+                          ▶ Play Now
+                        </button>
+                        <button
+                          className="btn btn-ghost"
+                          style={{ fontSize: 13, padding: "7px 12px" }}
+                          onClick={() => {
+                            if (autoNextTimerRef.current) clearInterval(autoNextTimerRef.current);
+                            setAutoNextEp(null);
+                            setAutoNextCountdown(null);
+                          }}
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* AniSkip manual prompt, rendered in streambert UI, outside webview */}
                 {skipPrompt && (
                   <button
@@ -1926,6 +2811,11 @@ export default function TVPage({
                       {skipPrompt === "intro" ? "INTRO" : "OUTRO"}
                     </span>
                   </button>
+                )}
+                {feedbackText && (
+                  <div className="player-feedback-overlay">
+                    {feedbackText}
+                  </div>
                 )}
               </div>
 
@@ -2009,8 +2899,19 @@ export default function TVPage({
             </div>
           )}
 
-          <div className="section">
-            <div className="section-title">Episodes</div>
+          <div className="section" style={{ position: "relative" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <div className="section-title" style={{ margin: 0 }}>Episodes</div>
+              <input
+                ref={episodeSearchInputRef}
+                type="text"
+                className="apikey-input"
+                style={{ width: 220, margin: 0, padding: "6px 12px", fontSize: 13 }}
+                placeholder="Search episodes... (Press /)"
+                value={episodeQuery}
+                onChange={(e) => setEpisodeQuery(e.target.value)}
+              />
+            </div>
             {seasons.length > 0 && (
               <div className="season-selector">
                 {seasons.map((s) => {
@@ -2068,15 +2969,10 @@ export default function TVPage({
                 </span>
               </div>
             )}
-            {loadingSeason && (
-              <div className="loader">
-                <div className="spinner" />
-              </div>
-            )}
-            {!loadingSeason &&
-              (seasonData?.episodes || episodeGroupCurrentEpisodes?.length) && (
+            <AsyncBoundary state={seasonState} onRetry={fetchSeasonData}>
+              {(seasonData?.episodes || episodeGroupCurrentEpisodes?.length) && (
                 <div className="episodes-grid">
-                  {currentSeasonEpisodes.map((ep) => {
+                  {filteredEpisodes.map((ep) => {
                     const pk = `tv_${item.id}_s${selectedSeason}e${ep.episode_number}`;
                     return (
                       <EpisodeCard
@@ -2098,9 +2994,9 @@ export default function TVPage({
                   })}
                 </div>
               )}
+            </AsyncBoundary>
           </div>
-        </>
-      )}
+      </AsyncBoundary>
 
       {showTrailer && trailerKey && (
         <TrailerModal

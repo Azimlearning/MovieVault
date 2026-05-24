@@ -18,6 +18,7 @@ const MediaCard = memo(function MediaCard({
   onMarkUnwatched,
   ageRating,
   restricted,
+  onRemove,
 }) {
   const title = item.title || item.name;
   const year = (item.release_date || item.first_air_date || "").slice(0, 4);
@@ -167,6 +168,19 @@ const MediaCard = memo(function MediaCard({
           ) : (
             <button className="context-menu-item" onClick={handleMarkWatched}>
               ✓ Mark as Watched
+            </button>
+          )}
+          {onRemove && (
+            <button
+              className="context-menu-item"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(watchedKey);
+                setMenu(null);
+              }}
+              style={{ color: "var(--red)" }}
+            >
+              ✕ Remove from Continue
             </button>
           )}
         </div>

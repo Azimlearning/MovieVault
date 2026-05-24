@@ -22,6 +22,13 @@ import {
 } from "../utils/homeLayout";
 import { collectBackupData, restoreBackupData } from "../utils/backup";
 import { formatBytes } from "../utils/storage";
+import { sourceQueue } from "../utils/sourceQueue";
+import {
+  exchangeTraktCode,
+  exchangeAnilistCode,
+  getTraktConfig,
+  getAnilistConfig
+} from "../utils/oauth";
 
 // ── Custom Select ─────────────────────────────────────────────────────────────
 function SettingsSelect({ value, onChange, options, style }) {
@@ -1584,6 +1591,154 @@ function TmdbLanguageSection() {
   );
 }
 
+// ── Video Sources & Failover Queue ────────────────────────────────────────────
+function VideoSourcesSection() {
+  const [sources, setSources] = useState(() => sourceQueue.getPriorityOrder());
+  const [timeout, setTimeoutVal] = useState(() => sourceQueue.getSourceTimeout());
+  const [reports, setReports] = useState(() => storage.get("brokenSourceReports") || []);
+  const [saved, setSaved] = useState(false);
+
+  const handleMoveUp = (index) => {
+    if (index === 0) return;
+    const newSources = [...sources];
+    const temp = newSources[index];
+    newSources[index] = newSources[index - 1];
+    newSources[index - 1] = temp;
+    setSources(newSources);
+  };
+
+  const handleMoveDown = (index) => {
+    if (index === sources.length - 1) return;
+    const newSources = [...sources];
+    const temp = newSources[index];
+    newSources[index] = newSources[index + 1];
+    newSources[index + 1] = temp;
+    setSources(newSources);
+  };
+
+  const handleSave = () => {
+    sourceQueue.savePriorityOrder(sources);
+    sourceQueue.saveSourceTimeout(timeout);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleClearReports = () => {
+    storage.remove("brokenSourceReports");
+    setReports([]);
+  };
+
+  const sourceLabels = {
+    vidsrc: "VidSrc",
+    videasy: "videasy",
+    "2embed": "2Embed"
+  };
+
+  return (
+    <div style={{ marginBottom: 40 }}>
+      <div className="settings-section-title">Video Sources &amp; Failover</div>
+      <div style={{ fontSize: 13, color: "var(--text3)", marginBottom: 16, lineHeight: 1.6 }}>
+        Configure the priority order of video streaming sources and failover timeout. When playing a title, we'll try each source in order until one succeeds.
+      </div>
+      
+      {/* Priority order list */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>
+          Source Priority Order
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 400 }}>
+          {sources.map((src, idx) => (
+            <div key={src} style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px" }}>
+              <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: "var(--text)" }}>
+                {sourceLabels[src] || src}
+              </span>
+              <button 
+                className="btn btn-ghost" 
+                style={{ padding: "4px 8px", fontSize: 12 }} 
+                disabled={idx === 0} 
+                onClick={() => handleMoveUp(idx)}
+              >
+                ▲ Up
+              </button>
+              <button 
+                className="btn btn-ghost" 
+                style={{ padding: "4px 8px", fontSize: 12 }} 
+                disabled={idx === sources.length - 1} 
+                onClick={() => handleMoveDown(idx)}
+              >
+                ▼ Down
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Timeout selector */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>
+          Failover Timeout
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="number"
+            min={5}
+            max={30}
+            className="apikey-input"
+            style={{ width: 80, marginBottom: 0 }}
+            value={timeout}
+            onChange={(e) => setTimeoutVal(Number(e.target.value))}
+          />
+          <span style={{ fontSize: 14, color: "var(--text2)" }}>seconds (per source)</span>
+        </div>
+        <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 6 }}>
+          Time to wait for a source to load before automatically falling over to the next one (5 to 30 seconds).
+        </div>
+      </div>
+
+      {/* Save Button */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 30 }}>
+        <button className="btn btn-primary" onClick={handleSave}>
+          Save Sources Settings
+        </button>
+        {saved && <span style={{ fontSize: 13, color: "#48c774" }}>✓ Saved</span>}
+      </div>
+
+      {/* Diagnostics Logs */}
+      <div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text2)" }}>
+            Diagnostics (Broken Source Reports)
+          </div>
+          {reports.length > 0 && (
+            <button className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }} onClick={handleClearReports}>
+              Clear Logs
+            </button>
+          )}
+        </div>
+        {reports.length === 0 ? (
+          <div style={{ fontSize: 13, color: "var(--text3)", fontStyle: "italic", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 16px" }}>
+            No broken source reports found.
+          </div>
+        ) : (
+          <div style={{ maxHeight: 200, overflowY: "auto", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+            {reports.map((report, idx) => (
+              <div key={idx} style={{ fontSize: 12, color: "var(--text2)", borderBottom: idx < reports.length - 1 ? "1px solid var(--border)" : "none", paddingBottom: idx < reports.length - 1 ? 8 : 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                  <span style={{ fontWeight: 600 }}>{report.title} ({report.type === "movie" ? "Movie" : `S${report.season} E${report.episode}`})</span>
+                  <span style={{ color: "var(--text3)" }}>{new Date(report.ts).toLocaleString()}</span>
+                </div>
+                <div style={{ color: "var(--text3)" }}>
+                  Sources tried: {report.sourcesTried?.join(" → ") || "None"}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Subtitle Settings ─────────────────────────────────────────────────────────
 function SubtitleSettingsSection() {
   const [enabled, setEnabled] = useState(
@@ -2252,6 +2407,23 @@ const SECTION_NAV = [
     ],
   },
   {
+    id: "integrations",
+    label: "Integrations",
+    icon: "🔗",
+    keywords: [
+      "integration",
+      "trakt",
+      "discord",
+      "anilist",
+      "sync",
+      "rpc",
+      "oauth",
+      "callback",
+      "login",
+      "status"
+    ],
+  },
+  {
     id: "backup",
     label: "Backup",
     icon: "💾",
@@ -2907,6 +3079,112 @@ export default function SettingsPage({
   const [introSkipMode, setIntroSkipMode] = useState(
     () => storage.get(STORAGE_KEYS.INTRO_SKIP_MODE) || "off",
   );
+  const [defaultSubtitleOffset, setDefaultSubtitleOffset] = useState(
+    () => storage.get(STORAGE_KEYS.DEFAULT_SUBTITLE_OFFSET) ?? 0,
+  );
+  const [autoNextEpisode, setAutoNextEpisode] = useState(
+    () => storage.get(STORAGE_KEYS.AUTO_NEXT_EPISODE) !== false,
+  );
+  const [discordRpcEnabled, setDiscordRpcEnabled] = useState(
+    () => storage.get("discordRpcEnabled") !== false
+  );
+  const [traktUser, setTraktUser] = useState(
+    () => storage.get("traktToken")?.username || ""
+  );
+  const [anilistUser, setAnilistUser] = useState(
+    () => storage.get("anilistToken")?.username || ""
+  );
+  const [customTraktId, setCustomTraktId] = useState(
+    () => storage.get("traktClientId") || ""
+  );
+  const [customTraktSecret, setCustomTraktSecret] = useState(
+    () => storage.get("traktClientSecret") || ""
+  );
+  const [customAnilistId, setCustomAnilistId] = useState(
+    () => storage.get("anilistClientId") || ""
+  );
+  const [customAnilistSecret, setCustomAnilistSecret] = useState(
+    () => storage.get("anilistClientSecret") || ""
+  );
+
+  useEffect(() => {
+    if (!window.electron) return;
+    const h = window.electron.onOauthCallback(async ({ code, state }) => {
+      try {
+        if (state === "trakt") {
+          const data = await exchangeTraktCode(code);
+          const config = getTraktConfig();
+          const userRes = await fetch("https://api.trakt.tv/users/me", {
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${data.access_token}`,
+              "trakt-api-version": "2",
+              "trakt-api-key": config.clientId
+            }
+          });
+          if (userRes.ok) {
+            const userData = await userRes.json();
+            data.username = userData.username || userData.name || "Connected";
+            storage.set("traktToken", data);
+            setTraktUser(data.username);
+          } else {
+            setTraktUser("Connected");
+          }
+        } else if (state === "anilist") {
+          const data = await exchangeAnilistCode(code);
+          const userRes = await fetch("https://graphql.anilist.co", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${data.access_token}`
+            },
+            body: JSON.stringify({
+              query: `query { Viewer { name } }`
+            })
+          });
+          if (userRes.ok) {
+            const userJson = await userRes.json();
+            const name = userJson.data?.Viewer?.name || "Connected";
+            data.username = name;
+            storage.set("anilistToken", data);
+            setAnilistUser(name);
+          } else {
+            setAnilistUser("Connected");
+          }
+        }
+      } catch (err) {
+        console.error("OAuth Exchange failed:", err);
+      } finally {
+        window.electron.stopOauthServer();
+      }
+    });
+    return () => window.electron.offOauthCallback(h);
+  }, []);
+
+  const handleConnectTrakt = () => {
+    window.electron.startOauthServer();
+    const config = getTraktConfig();
+    const url = `https://trakt.tv/oauth/authorize?response_type=code&client_id=${config.clientId}&redirect_uri=http://localhost:34882/callback&state=trakt`;
+    window.electron.openExternal(url);
+  };
+
+  const handleConnectAnilist = () => {
+    window.electron.startOauthServer();
+    const config = getAnilistConfig();
+    const url = `https://anilist.co/api/v2/oauth/authorize?client_id=${config.clientId}&redirect_uri=http://localhost:34882/callback&response_type=code&state=anilist`;
+    window.electron.openExternal(url);
+  };
+
+  const handleDisconnectTrakt = () => {
+    storage.remove("traktToken");
+    setTraktUser("");
+  };
+
+  const handleDisconnectAnilist = () => {
+    storage.remove("anilistToken");
+    setAnilistUser("");
+  };
+
   const [saved, setSaved] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetHovered, setResetHovered] = useState(false);
@@ -2922,6 +3200,7 @@ export default function SettingsPage({
   const secNotifications = useRef(null);
   const secInterface = useRef(null);
   const secLibrary = useRef(null);
+  const secIntegrations = useRef(null);
   const secBackup = useRef(null);
   const secStorage = useRef(null);
 
@@ -2934,6 +3213,7 @@ export default function SettingsPage({
     notifications: secNotifications,
     interface: secInterface,
     library: secLibrary,
+    integrations: secIntegrations,
     backup: secBackup,
     storage: secStorage,
   };
@@ -3065,6 +3345,13 @@ export default function SettingsPage({
     const val = Math.max(1, Math.min(300, Number(watchedThreshold) || 20));
     setWatchedThreshold(val);
     storage.set(STORAGE_KEYS.WATCHED_THRESHOLD, val);
+    flash();
+  };
+
+  const handleSaveSubOffset = () => {
+    const val = Math.max(-5.0, Math.min(5.0, parseFloat(defaultSubtitleOffset) || 0));
+    setDefaultSubtitleOffset(val);
+    storage.set(STORAGE_KEYS.DEFAULT_SUBTITLE_OFFSET, val);
     flash();
   };
 
@@ -3481,6 +3768,61 @@ export default function SettingsPage({
             )}
           </div>
 
+          {/* Auto-Play Next Episode */}
+          <div style={{ marginBottom: 32 }}>
+            <div className="settings-section-title">Auto-Play Next Episode</div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--text3)",
+                marginBottom: 16,
+                lineHeight: 1.6,
+              }}
+            >
+              When enabled, an “Up Next” banner appears during the last 30
+              seconds of an episode and automatically plays the next one after
+              a countdown — just like Netflix.
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <button
+                onClick={() => {
+                  const next = !autoNextEpisode;
+                  setAutoNextEpisode(next);
+                  storage.set(STORAGE_KEYS.AUTO_NEXT_EPISODE, next);
+                }}
+                title={autoNextEpisode ? "Disable auto-play" : "Enable auto-play"}
+                style={{
+                  width: 44,
+                  height: 24,
+                  borderRadius: 12,
+                  border: "1px solid var(--border)",
+                  cursor: "pointer",
+                  background: autoNextEpisode ? "var(--red)" : "var(--surface2)",
+                  position: "relative",
+                  transition: "background 0.2s",
+                  flexShrink: 0,
+                  outline: "none",
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    top: 3,
+                    left: autoNextEpisode ? 22 : 3,
+                    width: 16,
+                    height: 16,
+                    borderRadius: "50%",
+                    background: "#fff",
+                    transition: "left 0.2s",
+                  }}
+                />
+              </button>
+              <span style={{ fontSize: 14, color: "var(--text2)" }}>
+                {autoNextEpisode ? "Enabled" : "Disabled"}
+              </span>
+            </div>
+          </div>
+
           {/* Intro Skip */}
           <div style={{ marginBottom: 40 }}>
             <div className="settings-section-title">Anime Intro Skip</div>
@@ -3601,6 +3943,53 @@ export default function SettingsPage({
               ))}
             </div>
           </div>
+
+          <Divider />
+
+          {/* Default Subtitle Offset */}
+          <div style={{ marginBottom: 40 }}>
+            <div className="settings-section-title">Default Subtitle Offset</div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--text3)",
+                marginBottom: 16,
+                lineHeight: 1.6,
+              }}
+            >
+              Adjust the default timing offset for subtitles (seconds). Negative shifts subtitles earlier, positive shifts them later.
+            </div>
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="-5.0"
+                  max="5.0"
+                  className="apikey-input"
+                  style={{ width: 100, marginBottom: 0 }}
+                  value={defaultSubtitleOffset}
+                  onChange={(e) => setDefaultSubtitleOffset(e.target.value)}
+                />
+                <span style={{ fontSize: 14, color: "var(--text2)" }}>
+                  seconds
+                </span>
+              </div>
+              <button className="btn btn-primary" onClick={handleSaveSubOffset}>
+                Save
+              </button>
+            </div>
+          </div>
+
+          <Divider />
+          <VideoSourcesSection />
         </div>
 
         {/* ══════════════════════════════════════════════════════════════════ */}
@@ -3709,6 +4098,176 @@ export default function SettingsPage({
             subtitle="Watchlist sort order and watch history preferences"
           />
           <LibraryPrivacySection />
+        </div>
+
+        <Divider />
+
+        {/* ══════════════════════════════════════════════════════════════════ */}
+        {/* GROUP: INTEGRATIONS                                                */}
+        {/* ══════════════════════════════════════════════════════════════════ */}
+        <div ref={secIntegrations} style={{ scrollMarginTop: 80 }}>
+          <SectionGroupHeader
+            title="Integrations"
+            subtitle="Connect Trakt, AniList, and enable Discord Rich Presence"
+          />
+
+          {/* Discord RPC */}
+          <div style={{ marginBottom: 40 }}>
+            <div className="settings-section-title">Discord Rich Presence</div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--text3)",
+                marginBottom: 16,
+                lineHeight: 1.6,
+              }}
+            >
+              Show what you're watching, season/episode details, and elapsed time on your Discord profile.
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <input
+                type="checkbox"
+                id="discordRpcToggle"
+                checked={discordRpcEnabled}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setDiscordRpcEnabled(val);
+                  storage.set("discordRpcEnabled", val);
+                  if (!val) {
+                    window.electron?.clearDiscordActivity();
+                  }
+                }}
+                style={{ width: 18, height: 18, cursor: "pointer" }}
+              />
+              <label htmlFor="discordRpcToggle" style={{ fontSize: 14, color: "var(--text2)", cursor: "pointer" }}>
+                Enable Discord Rich Presence status
+              </label>
+            </div>
+          </div>
+
+          <Divider />
+
+          {/* Trakt Sync */}
+          <div style={{ marginBottom: 40 }}>
+            <div className="settings-section-title">Trakt.tv Sync</div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--text3)",
+                marginBottom: 16,
+                lineHeight: 1.6,
+              }}
+            >
+              Automatically synchronize your watch history, watchlist, and movie/episode progress with Trakt.
+            </div>
+            {traktUser ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                <span style={{ fontSize: 14, color: "var(--text2)" }}>
+                  Connected as: <strong style={{ color: "var(--red)" }}>{traktUser}</strong>
+                </span>
+                <button className="btn btn-secondary" style={{ padding: "6px 12px" }} onClick={handleDisconnectTrakt}>
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div>
+                  <button className="btn btn-primary" onClick={handleConnectTrakt}>
+                    Connect Trakt Account
+                  </button>
+                </div>
+                <details style={{ fontSize: 12, color: "var(--text3)", cursor: "pointer" }}>
+                  <summary style={{ padding: "4px 0" }}>Developer API Credentials (Optional override)</summary>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8, maxWidth: 450 }}>
+                    <input
+                      type="text"
+                      className="apikey-input"
+                      style={{ fontSize: 12, padding: "6px 10px", marginBottom: 0 }}
+                      placeholder="Trakt Client ID"
+                      value={customTraktId}
+                      onChange={(e) => {
+                        setCustomTraktId(e.target.value);
+                        storage.set("traktClientId", e.target.value);
+                      }}
+                    />
+                    <input
+                      type="password"
+                      className="apikey-input"
+                      style={{ fontSize: 12, padding: "6px 10px", marginBottom: 0 }}
+                      placeholder="Trakt Client Secret"
+                      value={customTraktSecret}
+                      onChange={(e) => {
+                        setCustomTraktSecret(e.target.value);
+                        storage.set("traktClientSecret", e.target.value);
+                      }}
+                    />
+                  </div>
+                </details>
+              </div>
+            )}
+          </div>
+
+          <Divider />
+
+          {/* AniList Sync */}
+          <div style={{ marginBottom: 40 }}>
+            <div className="settings-section-title">AniList Progress Sync</div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--text3)",
+                marginBottom: 16,
+                lineHeight: 1.6,
+              }}
+            >
+              Automatically synchronize your anime progress and media list status (Watching, Planning, Completed) with AniList.
+            </div>
+            {anilistUser ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                <span style={{ fontSize: 14, color: "var(--text2)" }}>
+                  Connected as: <strong style={{ color: "var(--red)" }}>{anilistUser}</strong>
+                </span>
+                <button className="btn btn-secondary" style={{ padding: "6px 12px" }} onClick={handleDisconnectAnilist}>
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div>
+                  <button className="btn btn-primary" onClick={handleConnectAnilist}>
+                    Connect AniList Account
+                  </button>
+                </div>
+                <details style={{ fontSize: 12, color: "var(--text3)", cursor: "pointer" }}>
+                  <summary style={{ padding: "4px 0" }}>Developer API Credentials (Optional override)</summary>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8, maxWidth: 450 }}>
+                    <input
+                      type="text"
+                      className="apikey-input"
+                      style={{ fontSize: 12, padding: "6px 10px", marginBottom: 0 }}
+                      placeholder="AniList Client ID"
+                      value={customAnilistId}
+                      onChange={(e) => {
+                        setCustomAnilistId(e.target.value);
+                        storage.set("anilistClientId", e.target.value);
+                      }}
+                    />
+                    <input
+                      type="password"
+                      className="apikey-input"
+                      style={{ fontSize: 12, padding: "6px 10px", marginBottom: 0 }}
+                      placeholder="AniList Client Secret"
+                      value={customAnilistSecret}
+                      onChange={(e) => {
+                        setCustomAnilistSecret(e.target.value);
+                        storage.set("anilistClientSecret", e.target.value);
+                      }}
+                    />
+                  </div>
+                </details>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ══════════════════════════════════════════════════════════════════ */}
