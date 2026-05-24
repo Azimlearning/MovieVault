@@ -838,7 +838,7 @@ export default function MoviePage({
         const isErrorTitle = title && (title.includes("502") || title.includes("504") || title.includes("Server Error") || title.includes("Cloudflare"));
         const isErrorBody = bodyText && (bodyText.includes("502 Bad Gateway") || bodyText.includes("504 Gateway Timeout") || bodyText.includes("Server Error") || bodyText.includes("Cloudflare"));
         
-        if (isErrorTitle || isErrorBody || !bodyText || bodyText.trim().length === 0) {
+        if (isErrorTitle || isErrorBody) {
           console.log(`Webview loaded successfully but contains error content:`, title, bodyText);
           handleFailover();
           return;
