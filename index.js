@@ -459,6 +459,116 @@ safeHandle("wyzie-validate-key", async (_, key) => {
   }
 });
 
+// -- Discord RPC & OAuth Loopback Server -----------------------------------------
+let rpcClient = null;
+let rpcConnected = false;
+
+function initDiscordRpc(clientId) {
+  if (rpcClient) return;
+  try {
+    const DiscordRPC = require("discord-rpc");
+    rpcClient = new DiscordRPC.Client({ transport: "ipc" });
+    rpcClient.on("ready", () => {
+      rpcConnected = true;
+      console.log("[Discord RPC] Connected");
+    });
+    rpcClient.on("disconnected", () => {
+      rpcConnected = false;
+      rpcClient = null;
+      console.log("[Discord RPC] Disconnected");
+    });
+    rpcClient.login({ clientId }).catch((err) => {
+      console.error("[Discord RPC] Login failed:", err);
+      rpcClient = null;
+      rpcConnected = false;
+    });
+  } catch (err) {
+    console.error("[Discord RPC] Failed to load module:", err);
+  }
+}
+
+safeHandle("set-discord-activity", (_, activity) => {
+  if (!rpcClient || !rpcConnected) {
+    initDiscordRpc("1241036830578610217"); // Cinevault Client ID
+  }
+  setTimeout(() => {
+    if (rpcClient && rpcConnected) {
+      rpcClient.setActivity(activity).catch(() => {});
+    }
+  }, 1000); // give login a second to connect
+});
+
+safeHandle("clear-discord-activity", () => {
+  if (rpcClient && rpcConnected) {
+    rpcClient.clearActivity().catch(() => {});
+  }
+});
+
+let oauthServer = null;
+
+function startOauthServer(webContentsInstance) {
+  if (oauthServer) return;
+  try {
+    const http = require("http");
+    oauthServer = http.createServer((req, res) => {
+      try {
+        const urlObj = new URL(req.url, `http://${req.headers.host}`);
+        if (urlObj.pathname === "/callback") {
+          const code = urlObj.searchParams.get("code");
+          const state = urlObj.searchParams.get("state");
+          
+          webContentsInstance.send("oauth-callback", { code, state });
+          
+          res.writeHead(200, { "Content-Type": "text/html" });
+          res.end(`
+            <html>
+              <body style="background: #0a0a0a; color: #f0f0f0; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0;">
+                <h1 style="color: #e50914;">Authentication Successful!</h1>
+                <p>You have successfully logged in. You can close this window and return to Cinevault.</p>
+                <script>setTimeout(() => window.close(), 3000);</script>
+              </body>
+            </html>
+          `);
+          
+          setTimeout(() => {
+            stopOauthServer();
+          }, 3000);
+        } else {
+          res.writeHead(404);
+          res.end("Not Found");
+        }
+      } catch (err) {
+        res.writeHead(500);
+        res.end("Error processing request");
+      }
+    });
+    
+    oauthServer.listen(34882, "127.0.0.1", () => {
+      console.log("[OAuth Server] Listening on http://localhost:34882");
+    });
+  } catch (err) {
+    console.error("[OAuth Server] Start failed:", err);
+  }
+}
+
+function stopOauthServer() {
+  if (oauthServer) {
+    oauthServer.close();
+    oauthServer = null;
+    console.log("[OAuth Server] Stopped");
+  }
+}
+
+safeHandle("start-oauth-server", (event) => {
+  startOauthServer(event.sender);
+  return { ok: true };
+});
+
+safeHandle("stop-oauth-server", () => {
+  stopOauthServer();
+  return { ok: true };
+});
+
 // -- Desktop notifications -----------------------------------------------------
 // Called from the renderer whenever it wants a native OS notification.
 ipcMain.handle(

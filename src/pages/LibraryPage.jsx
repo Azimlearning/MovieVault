@@ -444,7 +444,7 @@ export default function LibraryPage({
 
           {/* Forgotten About Section */}
           <div className="stats-chart-box" style={{ marginBottom: 32 }}>
-            <div className="stats-chart-title">Forgotten About (In Progress > 30 Days)</div>
+            <div className="stats-chart-title">Forgotten About (In Progress &gt; 30 Days)</div>
             {stats.forgotten.length > 0 ? (
               <div className="stats-forgotten-list">
                 {stats.forgotten.map((item) => {

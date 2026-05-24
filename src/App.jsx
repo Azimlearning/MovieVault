@@ -13,7 +13,8 @@ import WindowTitlebar from "./components/WindowTitlebar";
 import { storage, secureStorage, STORAGE_KEYS } from "./utils/storage";
 import { applyAccentColor } from "./utils/appearance";
 import { collectBackupData } from "./utils/backup";
-import { tmdbFetch, setApiErrorHandlers } from "./utils/api";
+import { tmdbFetch, setApiErrorHandlers, isAnimeContent, fetchAnilistData } from "./utils/api";
+import { scrobbleTrakt, scrobbleAnilist } from "./utils/oauth";
 import { clearAppCaches } from "./utils/storage";
 
 import Sidebar from "./components/Sidebar";
@@ -30,6 +31,65 @@ const LibraryPage = lazy(() => import("./pages/LibraryPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const DownloadsPage = lazy(() => import("./pages/DownloadsPage"));
 import { checkForUpdates } from "./utils/updates";
+
+const handleIntegrationsSync = (entry, pct) => {
+  // 1. Discord RPC
+  const discordRpcEnabled = storage.get("discordRpcEnabled") !== false;
+  if (discordRpcEnabled && window.electron?.setDiscordActivity) {
+    const isTv = entry.media_type === "tv";
+    const details = isTv 
+      ? `S${entry.season}E${entry.episode}: ${entry.episodeTitle || "Episode"}`
+      : "Watching Movie";
+    
+    const elapsed = Math.round(entry.position);
+    window.electron.setDiscordActivity({
+      details: entry.title,
+      state: details,
+      startTimestamp: Math.floor((Date.now() - elapsed * 1000) / 1000) * 1000,
+      largeImageKey: "logo",
+      largeImageText: "Cinevault",
+      smallImageKey: isTv ? "tv" : "movie",
+      smallImageText: isTv ? "Series" : "Movie"
+    });
+  }
+
+  // 2. Trakt Scrobbling
+  const traktToken = storage.get("traktToken");
+  if (traktToken) {
+    const action = pct >= 90 ? "completed" : pct <= 5 ? "watch" : "watching";
+    const lastScrobblePct = window.__lastScrobblePct?.[entry.key] || 0;
+    if (pct >= 90 || pct <= 5 || Math.abs(pct - lastScrobblePct) >= 10) {
+      if (!window.__lastScrobblePct) window.__lastScrobblePct = {};
+      window.__lastScrobblePct[entry.key] = pct;
+      
+      scrobbleTrakt({
+        id: entry.tmdbId,
+        media_type: entry.media_type,
+        season: entry.season,
+        episode: entry.episode
+      }, pct, action);
+    }
+  }
+
+  // 3. AniList Sync
+  const anilistToken = storage.get("anilistToken");
+  const genres = entry.genres || [];
+  const hasAnimation = genres.includes(16);
+  const isAnime = hasAnimation && isAnimeContent({ original_language: "ja", genre_ids: genres });
+  
+  if (anilistToken && isAnime && entry.media_type === "tv") {
+    if (pct >= 90 && !window.__anilistSyncedEpisodes?.[entry.key]) {
+      if (!window.__anilistSyncedEpisodes) window.__anilistSyncedEpisodes = {};
+      window.__anilistSyncedEpisodes[entry.key] = true;
+      
+      fetchAnilistData(entry.title, "ANIME", entry.tmdbId).then(data => {
+        if (data?.id) {
+          scrobbleAnilist(data.id, entry.episode, "CURRENT");
+        }
+      }).catch(err => console.error("AniList progress sync failed:", err));
+    }
+  }
+};
 
 export default function App() {
   // apiKey loaded async from secure storage (OS keychain)
@@ -821,6 +881,7 @@ export default function App() {
           genres: info.item.genres || info.item.genre_ids || []
         };
         storage.set("watchHistory", next);
+        handleIntegrationsSync(next[key], pct);
         return next;
       });
     }

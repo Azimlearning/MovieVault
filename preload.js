@@ -184,4 +184,18 @@ contextBridge.exposeInMainWorld("electron", {
   },
   offScheduledBackupRequested: (h) =>
     ipcRenderer.removeListener("scheduled-backup-requested", h),
+
+  // Discord RPC
+  setDiscordActivity: (activity) => ipcRenderer.invoke("set-discord-activity", activity),
+  clearDiscordActivity: () => ipcRenderer.invoke("clear-discord-activity"),
+
+  // OAuth Loopback Server
+  startOauthServer: () => ipcRenderer.invoke("start-oauth-server"),
+  stopOauthServer: () => ipcRenderer.invoke("stop-oauth-server"),
+  onOauthCallback: (cb) => {
+    const h = (_, data) => cb(data);
+    ipcRenderer.on("oauth-callback", h);
+    return h;
+  },
+  offOauthCallback: (h) => ipcRenderer.removeListener("oauth-callback", h),
 });

@@ -23,6 +23,12 @@ import {
 import { collectBackupData, restoreBackupData } from "../utils/backup";
 import { formatBytes } from "../utils/storage";
 import { sourceQueue } from "../utils/sourceQueue";
+import {
+  exchangeTraktCode,
+  exchangeAnilistCode,
+  getTraktConfig,
+  getAnilistConfig
+} from "../utils/oauth";
 
 // ── Custom Select ─────────────────────────────────────────────────────────────
 function SettingsSelect({ value, onChange, options, style }) {
@@ -2401,6 +2407,23 @@ const SECTION_NAV = [
     ],
   },
   {
+    id: "integrations",
+    label: "Integrations",
+    icon: "🔗",
+    keywords: [
+      "integration",
+      "trakt",
+      "discord",
+      "anilist",
+      "sync",
+      "rpc",
+      "oauth",
+      "callback",
+      "login",
+      "status"
+    ],
+  },
+  {
     id: "backup",
     label: "Backup",
     icon: "💾",
@@ -3059,6 +3082,106 @@ export default function SettingsPage({
   const [defaultSubtitleOffset, setDefaultSubtitleOffset] = useState(
     () => storage.get(STORAGE_KEYS.DEFAULT_SUBTITLE_OFFSET) ?? 0,
   );
+  const [discordRpcEnabled, setDiscordRpcEnabled] = useState(
+    () => storage.get("discordRpcEnabled") !== false
+  );
+  const [traktUser, setTraktUser] = useState(
+    () => storage.get("traktToken")?.username || ""
+  );
+  const [anilistUser, setAnilistUser] = useState(
+    () => storage.get("anilistToken")?.username || ""
+  );
+  const [customTraktId, setCustomTraktId] = useState(
+    () => storage.get("traktClientId") || ""
+  );
+  const [customTraktSecret, setCustomTraktSecret] = useState(
+    () => storage.get("traktClientSecret") || ""
+  );
+  const [customAnilistId, setCustomAnilistId] = useState(
+    () => storage.get("anilistClientId") || ""
+  );
+  const [customAnilistSecret, setCustomAnilistSecret] = useState(
+    () => storage.get("anilistClientSecret") || ""
+  );
+
+  useEffect(() => {
+    if (!window.electron) return;
+    const h = window.electron.onOauthCallback(async ({ code, state }) => {
+      try {
+        if (state === "trakt") {
+          const data = await exchangeTraktCode(code);
+          const config = getTraktConfig();
+          const userRes = await fetch("https://api.trakt.tv/users/me", {
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${data.access_token}`,
+              "trakt-api-version": "2",
+              "trakt-api-key": config.clientId
+            }
+          });
+          if (userRes.ok) {
+            const userData = await userRes.json();
+            data.username = userData.username || userData.name || "Connected";
+            storage.set("traktToken", data);
+            setTraktUser(data.username);
+          } else {
+            setTraktUser("Connected");
+          }
+        } else if (state === "anilist") {
+          const data = await exchangeAnilistCode(code);
+          const userRes = await fetch("https://graphql.anilist.co", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${data.access_token}`
+            },
+            body: JSON.stringify({
+              query: `query { Viewer { name } }`
+            })
+          });
+          if (userRes.ok) {
+            const userJson = await userRes.json();
+            const name = userJson.data?.Viewer?.name || "Connected";
+            data.username = name;
+            storage.set("anilistToken", data);
+            setAnilistUser(name);
+          } else {
+            setAnilistUser("Connected");
+          }
+        }
+      } catch (err) {
+        console.error("OAuth Exchange failed:", err);
+      } finally {
+        window.electron.stopOauthServer();
+      }
+    });
+    return () => window.electron.offOauthCallback(h);
+  }, []);
+
+  const handleConnectTrakt = () => {
+    window.electron.startOauthServer();
+    const config = getTraktConfig();
+    const url = `https://trakt.tv/oauth/authorize?response_type=code&client_id=${config.clientId}&redirect_uri=http://localhost:34882/callback&state=trakt`;
+    window.electron.openExternal(url);
+  };
+
+  const handleConnectAnilist = () => {
+    window.electron.startOauthServer();
+    const config = getAnilistConfig();
+    const url = `https://anilist.co/api/v2/oauth/authorize?client_id=${config.clientId}&redirect_uri=http://localhost:34882/callback&response_type=code&state=anilist`;
+    window.electron.openExternal(url);
+  };
+
+  const handleDisconnectTrakt = () => {
+    storage.remove("traktToken");
+    setTraktUser("");
+  };
+
+  const handleDisconnectAnilist = () => {
+    storage.remove("anilistToken");
+    setAnilistUser("");
+  };
+
   const [saved, setSaved] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetHovered, setResetHovered] = useState(false);
@@ -3074,6 +3197,7 @@ export default function SettingsPage({
   const secNotifications = useRef(null);
   const secInterface = useRef(null);
   const secLibrary = useRef(null);
+  const secIntegrations = useRef(null);
   const secBackup = useRef(null);
   const secStorage = useRef(null);
 
@@ -3086,6 +3210,7 @@ export default function SettingsPage({
     notifications: secNotifications,
     interface: secInterface,
     library: secLibrary,
+    integrations: secIntegrations,
     backup: secBackup,
     storage: secStorage,
   };
@@ -3915,6 +4040,176 @@ export default function SettingsPage({
             subtitle="Watchlist sort order and watch history preferences"
           />
           <LibraryPrivacySection />
+        </div>
+
+        <Divider />
+
+        {/* ══════════════════════════════════════════════════════════════════ */}
+        {/* GROUP: INTEGRATIONS                                                */}
+        {/* ══════════════════════════════════════════════════════════════════ */}
+        <div ref={secIntegrations} style={{ scrollMarginTop: 80 }}>
+          <SectionGroupHeader
+            title="Integrations"
+            subtitle="Connect Trakt, AniList, and enable Discord Rich Presence"
+          />
+
+          {/* Discord RPC */}
+          <div style={{ marginBottom: 40 }}>
+            <div className="settings-section-title">Discord Rich Presence</div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--text3)",
+                marginBottom: 16,
+                lineHeight: 1.6,
+              }}
+            >
+              Show what you're watching, season/episode details, and elapsed time on your Discord profile.
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <input
+                type="checkbox"
+                id="discordRpcToggle"
+                checked={discordRpcEnabled}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setDiscordRpcEnabled(val);
+                  storage.set("discordRpcEnabled", val);
+                  if (!val) {
+                    window.electron?.clearDiscordActivity();
+                  }
+                }}
+                style={{ width: 18, height: 18, cursor: "pointer" }}
+              />
+              <label htmlFor="discordRpcToggle" style={{ fontSize: 14, color: "var(--text2)", cursor: "pointer" }}>
+                Enable Discord Rich Presence status
+              </label>
+            </div>
+          </div>
+
+          <Divider />
+
+          {/* Trakt Sync */}
+          <div style={{ marginBottom: 40 }}>
+            <div className="settings-section-title">Trakt.tv Sync</div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--text3)",
+                marginBottom: 16,
+                lineHeight: 1.6,
+              }}
+            >
+              Automatically synchronize your watch history, watchlist, and movie/episode progress with Trakt.
+            </div>
+            {traktUser ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                <span style={{ fontSize: 14, color: "var(--text2)" }}>
+                  Connected as: <strong style={{ color: "var(--red)" }}>{traktUser}</strong>
+                </span>
+                <button className="btn btn-secondary" style={{ padding: "6px 12px" }} onClick={handleDisconnectTrakt}>
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div>
+                  <button className="btn btn-primary" onClick={handleConnectTrakt}>
+                    Connect Trakt Account
+                  </button>
+                </div>
+                <details style={{ fontSize: 12, color: "var(--text3)", cursor: "pointer" }}>
+                  <summary style={{ padding: "4px 0" }}>Developer API Credentials (Optional override)</summary>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8, maxWidth: 450 }}>
+                    <input
+                      type="text"
+                      className="apikey-input"
+                      style={{ fontSize: 12, padding: "6px 10px", marginBottom: 0 }}
+                      placeholder="Trakt Client ID"
+                      value={customTraktId}
+                      onChange={(e) => {
+                        setCustomTraktId(e.target.value);
+                        storage.set("traktClientId", e.target.value);
+                      }}
+                    />
+                    <input
+                      type="password"
+                      className="apikey-input"
+                      style={{ fontSize: 12, padding: "6px 10px", marginBottom: 0 }}
+                      placeholder="Trakt Client Secret"
+                      value={customTraktSecret}
+                      onChange={(e) => {
+                        setCustomTraktSecret(e.target.value);
+                        storage.set("traktClientSecret", e.target.value);
+                      }}
+                    />
+                  </div>
+                </details>
+              </div>
+            )}
+          </div>
+
+          <Divider />
+
+          {/* AniList Sync */}
+          <div style={{ marginBottom: 40 }}>
+            <div className="settings-section-title">AniList Progress Sync</div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--text3)",
+                marginBottom: 16,
+                lineHeight: 1.6,
+              }}
+            >
+              Automatically synchronize your anime progress and media list status (Watching, Planning, Completed) with AniList.
+            </div>
+            {anilistUser ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                <span style={{ fontSize: 14, color: "var(--text2)" }}>
+                  Connected as: <strong style={{ color: "var(--red)" }}>{anilistUser}</strong>
+                </span>
+                <button className="btn btn-secondary" style={{ padding: "6px 12px" }} onClick={handleDisconnectAnilist}>
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div>
+                  <button className="btn btn-primary" onClick={handleConnectAnilist}>
+                    Connect AniList Account
+                  </button>
+                </div>
+                <details style={{ fontSize: 12, color: "var(--text3)", cursor: "pointer" }}>
+                  <summary style={{ padding: "4px 0" }}>Developer API Credentials (Optional override)</summary>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8, maxWidth: 450 }}>
+                    <input
+                      type="text"
+                      className="apikey-input"
+                      style={{ fontSize: 12, padding: "6px 10px", marginBottom: 0 }}
+                      placeholder="AniList Client ID"
+                      value={customAnilistId}
+                      onChange={(e) => {
+                        setCustomAnilistId(e.target.value);
+                        storage.set("anilistClientId", e.target.value);
+                      }}
+                    />
+                    <input
+                      type="password"
+                      className="apikey-input"
+                      style={{ fontSize: 12, padding: "6px 10px", marginBottom: 0 }}
+                      placeholder="AniList Client Secret"
+                      value={customAnilistSecret}
+                      onChange={(e) => {
+                        setCustomAnilistSecret(e.target.value);
+                        storage.set("anilistClientSecret", e.target.value);
+                      }}
+                    />
+                  </div>
+                </details>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ══════════════════════════════════════════════════════════════════ */}
