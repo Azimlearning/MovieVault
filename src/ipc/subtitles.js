@@ -8,7 +8,6 @@ const fs = require("fs");
 const https = require("https");
 const http = require("http");
 const os = require("os");
-const admZip = require("adm-zip");
 const { safeHandle } = require("./safeHandle");
 const zlib = require("zlib");
 
