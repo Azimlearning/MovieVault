@@ -1480,6 +1480,7 @@ export default function MoviePage({
                     width: "100%",
                     height: "100%",
                     border: "none",
+                    zIndex: 1,
                     visibility:
                       webviewLoading || !resolvedPlayerUrl
                         ? "hidden"
@@ -1504,6 +1505,7 @@ export default function MoviePage({
                   width: "100%",
                   height: "100%",
                   border: "none",
+                  zIndex: 1,
                   visibility: webviewLoading ? "hidden" : "visible",
                 }}
               />

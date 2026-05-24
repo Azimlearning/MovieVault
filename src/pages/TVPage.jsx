@@ -2460,6 +2460,7 @@ export default function TVPage({
                         outline: "none",
                         boxShadow: "none",
                         background: "black",
+                        zIndex: 1,
                         visibility:
                           webviewLoading || !resolvedPlayerUrl
                             ? "hidden"
@@ -2494,6 +2495,7 @@ export default function TVPage({
                       outline: "none",
                       boxShadow: "none",
                       background: "black",
+                      zIndex: 1,
                       visibility: webviewLoading ? "hidden" : "visible",
                     }}
                     tabIndex={-1}
@@ -2684,7 +2686,7 @@ export default function TVPage({
                       position: "absolute",
                       bottom: 72,
                       right: 24,
-                      zIndex: 60,
+                      zIndex: 99999,
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "flex-end",
