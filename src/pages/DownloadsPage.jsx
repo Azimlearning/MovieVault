@@ -13,6 +13,27 @@ import SubtitleDownloaderModal from "../components/SubtitleDownloaderModal";
 import { imgUrl } from "../utils/api";
 import AsyncBoundary from "../components/AsyncBoundary";
 
+const PROGRESS_TIME_PREFIX = "dlTime_";
+const DURATION_PREFIX = "dlDur_";
+
+function secsToHms(s) {
+  if (!s || s <= 0) return null;
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = Math.floor(s % 60);
+  return [h, m, sec].map((v) => String(v).padStart(2, "0")).join(":");
+}
+
+function hmsToSecs(str) {
+  const parts = str.trim().split(":").map(Number);
+  if (parts.some(isNaN)) return null;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 1 && parts[0] >= 0) return parts[0];
+  return null;
+}
+
+
 const STATUS_CLASS = {
   downloading: "dl-status--downloading",
   completed: "dl-status--completed",
@@ -734,26 +755,7 @@ const ActiveCard = memo(function ActiveCard({ dl, onDelete, onSelect }) {
   );
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function secsToHms(s) {
-  if (!s || s <= 0) return null;
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = Math.floor(s % 60);
-  return [h, m, sec].map((v) => String(v).padStart(2, "0")).join(":");
-}
 
-function hmsToSecs(str) {
-  const parts = str.trim().split(":").map(Number);
-  if (parts.some(isNaN)) return null;
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  if (parts.length === 1 && parts[0] >= 0) return parts[0];
-  return null;
-}
-
-const PROGRESS_TIME_PREFIX = "dlTime_";
-const DURATION_PREFIX = "dlDur_";
 
 // ── Local file / completed download card ──────────────────────────────────────
 const LocalFileCard = memo(function LocalFileCard({

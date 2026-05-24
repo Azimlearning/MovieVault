@@ -434,6 +434,48 @@ export default function TVPage({
   // Always-current refs for interval callbacks, avoids stale closures without restarting the interval
   const saveProgressRef = useRef(saveProgress);
 
+  const onMarkWatchedRef = useRef(onMarkWatched);
+  onMarkWatchedRef.current = onMarkWatched;
+
+  const [downloaderFolder, setDownloaderFolder] = useState(
+    () => storage.get("downloaderFolder") || "",
+  );
+  const [epMenu, setEpMenu] = useState(null); // { x, y, pk }
+
+  // Age rating
+  const [rating, setRating] = useState({ cert: null, minAge: null });
+  const ageLimitSetting = useMemo(() => getAgeLimitSetting(storage), []);
+  const ratingCountry = useMemo(() => getRatingCountry(storage), []);
+  const restricted = isRestricted(rating.minAge, ageLimitSetting);
+  const [seasonMenu, setSeasonMenu] = useState(null); // { x, y, seasonNum }
+
+  // Read threshold from settings (default 20s), stable across renders
+  const [watchedThreshold] = useState(
+    () => storage.get("watchedThreshold") ?? 20,
+  );
+  const autoMarkedRef = useRef(false);
+  const lastKnownTimeRef = useRef(0);
+  const durationRef = useRef(0); // tracked for AniSkip progress bar markers
+  const seekBackCooldownRef = useRef(0);
+  const hasSeekedSavedTimeRef = useRef(false);
+
+  const [episodeQuery, setEpisodeQuery] = useState("");
+  const episodeSearchInputRef = useRef(null);
+
+  const [subtitleOffset, setSubtitleOffset] = useState(0);
+  const [feedbackText, setFeedbackText] = useState(null);
+  const feedbackTimerRef = useRef(null);
+
+  // Blocked request stats, reset key includes season+episode so counter resets on each ep
+  const blockedResetKey = `${item.id}_s${selectedSeason}_e${selectedEp?.episode_number ?? 0}`;
+  const {
+    sessionTotal: blockedSession,
+    alltimeTotal: blockedAlltime,
+    showModal: showBlockedModal,
+    setShowModal: setShowBlockedModal,
+    getSessionDomains: getBlockedDomains,
+  } = useBlockedStats(blockedResetKey);
+
   const d = details || item;
   const title = d.name || d.title;
   const year = (d.first_air_date || "").slice(0, 4);
@@ -785,48 +827,6 @@ export default function TVPage({
     setResolvingUrl(false);
   }, []);
   saveProgressRef.current = saveProgress;
-  const onMarkWatchedRef = useRef(onMarkWatched);
-  onMarkWatchedRef.current = onMarkWatched;
-
-
-  const [downloaderFolder, setDownloaderFolder] = useState(
-    () => storage.get("downloaderFolder") || "",
-  );
-  const [epMenu, setEpMenu] = useState(null); // { x, y, pk }
-
-  // Blocked request stats, reset key includes season+episode so counter resets on each ep
-  const blockedResetKey = `${item.id}_s${selectedSeason}_e${selectedEp?.episode_number ?? 0}`;
-  const {
-    sessionTotal: blockedSession,
-    alltimeTotal: blockedAlltime,
-    showModal: showBlockedModal,
-    setShowModal: setShowBlockedModal,
-    getSessionDomains: getBlockedDomains,
-  } = useBlockedStats(blockedResetKey);
-
-  // Age rating
-  const [rating, setRating] = useState({ cert: null, minAge: null });
-  const ageLimitSetting = useMemo(() => getAgeLimitSetting(storage), []);
-  const ratingCountry = useMemo(() => getRatingCountry(storage), []);
-  const restricted = isRestricted(rating.minAge, ageLimitSetting);
-  const [seasonMenu, setSeasonMenu] = useState(null); // { x, y, seasonNum }
-
-  // Read threshold from settings (default 20s), stable across renders
-  const [watchedThreshold] = useState(
-    () => storage.get("watchedThreshold") ?? 20,
-  );
-  const autoMarkedRef = useRef(false);
-  const lastKnownTimeRef = useRef(0);
-  const durationRef = useRef(0); // tracked for AniSkip progress bar markers
-  const seekBackCooldownRef = useRef(0);
-  const hasSeekedSavedTimeRef = useRef(false);
-
-  const [episodeQuery, setEpisodeQuery] = useState("");
-  const episodeSearchInputRef = useRef(null);
-
-  const [subtitleOffset, setSubtitleOffset] = useState(0);
-  const [feedbackText, setFeedbackText] = useState(null);
-  const feedbackTimerRef = useRef(null);
 
   const showFeedback = useCallback((text) => {
     if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
