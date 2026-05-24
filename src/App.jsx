@@ -1091,6 +1091,7 @@ export default function App() {
                 watched={watched}
                 onMarkWatched={markWatched}
                 onMarkUnwatched={markUnwatched}
+                watchHistory={watchHistory}
               />
             )}
             {page === "settings" && (
