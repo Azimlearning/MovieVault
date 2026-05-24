@@ -460,6 +460,7 @@ export default function TVPage({
     () => storage.get("watchedThreshold") ?? 20,
   );
   const autoMarkedRef = useRef(false);
+  const autoNextTriggeredRef = useRef(false);
   const lastKnownTimeRef = useRef(0);
   const durationRef = useRef(0); // tracked for AniSkip progress bar markers
   const seekBackCooldownRef = useRef(0);
@@ -1469,6 +1470,7 @@ export default function TVPage({
   // Reset auto-mark guard and auto-next banner when episode changes
   useEffect(() => {
     autoMarkedRef.current = false;
+    autoNextTriggeredRef.current = false;
     lastKnownTimeRef.current = 0;
     seekBackCooldownRef.current = 0;
     durationRef.current = 0;
@@ -1893,7 +1895,11 @@ export default function TVPage({
             // Show "Up Next" banner when ≤30s remain and there's a next episode
             const currentEpNum = selectedEp?.episode_number;
             const nextEpCandidate = currentSeasonEpisodes.find(e => e.episode_number === currentEpNum + 1);
-            if (autoNextEnabled && nextEpCandidate && remaining > 0 && remaining <= 30 && !autoMarkedRef.current) {
+            if (remaining > 45) {
+              autoNextTriggeredRef.current = false;
+            }
+            if (autoNextEnabled && nextEpCandidate && remaining > 0 && remaining <= 30 && !autoNextTriggeredRef.current) {
+              autoNextTriggeredRef.current = true;
               setAutoNextEp(nextEpCandidate);
               const countdownSecs = Math.max(1, Math.round(Math.min(remaining, 15)));
               setAutoNextCountdown(prev => {
