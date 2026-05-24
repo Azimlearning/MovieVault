@@ -5,4 +5,5 @@ dist/
 *.zip
 *secret.txt
 .env
+Windows_x64-portable/
 
