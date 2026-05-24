@@ -1960,6 +1960,7 @@ export default function TVPage({
     currentProgressKey,
     watchedThreshold,
     progressViaFrames,
+    autoNextEnabled,
     currentSeasonEpisodes,
     seasons,
     selectedSeason,
@@ -1967,28 +1968,44 @@ export default function TVPage({
     item,
   ]);
 
-  // Auto-next countdown ticker
+  // Auto-next: start a clean countdown when a next episode is queued.
+  // Counts DOWN every second; plays at 0.
   useEffect(() => {
-    if (autoNextCountdown === null || autoNextEp === null) return;
-    if (autoNextTimerRef.current) clearInterval(autoNextTimerRef.current);
+    if (!autoNextEp) {
+      // Clear any lingering timer when banner is dismissed or episode changes
+      if (autoNextTimerRef.current) {
+        clearInterval(autoNextTimerRef.current);
+        autoNextTimerRef.current = null;
+      }
+      setAutoNextCountdown(null);
+      return;
+    }
+
+    // Banner just appeared — start fresh countdown from the initial value
+    // (autoNextCountdown was already set by the progress interval)
     autoNextTimerRef.current = setInterval(() => {
       setAutoNextCountdown(prev => {
-        if (prev === null || prev <= 1) {
-          clearInterval(autoNextTimerRef.current);
-          autoNextTimerRef.current = null;
-          return null;
-        }
+        if (prev === null) return null;
+        if (prev <= 1) return 0; // stop at 0, trigger below
         return prev - 1;
       });
     }, 1000);
-    return () => {
-      if (autoNextTimerRef.current) clearInterval(autoNextTimerRef.current);
-    };
-  }, [autoNextCountdown !== null, autoNextEp]); // only (re)start when banner first appears
 
-  // Trigger playEpisode when countdown hits 0
+    return () => {
+      if (autoNextTimerRef.current) {
+        clearInterval(autoNextTimerRef.current);
+        autoNextTimerRef.current = null;
+      }
+    };
+  }, [autoNextEp]); // restart only when next-ep changes
+
+  // Play when countdown reaches 0
   useEffect(() => {
     if (autoNextCountdown === 0 && autoNextEp) {
+      if (autoNextTimerRef.current) {
+        clearInterval(autoNextTimerRef.current);
+        autoNextTimerRef.current = null;
+      }
       playEpisode(autoNextEp);
       setAutoNextEp(null);
       setAutoNextCountdown(null);
