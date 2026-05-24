@@ -1,13 +1,37 @@
-// Keyboard Shortcuts reference modal
+import { useState } from "react";
+
 export default function KeyboardShortcutsModal({ onClose }) {
-  const shortcuts = [
-    { keys: ["Ctrl", "F"], desc: "Open search" },
-    { keys: ["Ctrl", "K"], desc: "Search on a page" },
-    { keys: ["Esc"], desc: "Close search / modal" },
+  const [tab, setTab] = useState("global");
+
+  const globalShortcuts = [
+    { keys: ["Ctrl", "F"], desc: "Open global search" },
+    { keys: ["Ctrl", "K"], desc: "Open global search" },
+    { keys: ["Ctrl", ","], desc: "Open settings" },
+    { keys: ["Ctrl", "L"], desc: "Jump to Library" },
+    { keys: ["Ctrl", "H"], desc: "Jump to Home" },
     { keys: ["Ctrl", "Z"], desc: "Navigate back" },
-    { keys: ["Ctrl", "R"], desc: "Reload app" },
-    { keys: ["?"], desc: "Show this shortcuts overview" },
+    { keys: ["Esc"], desc: "Close search / modal" },
+    { keys: ["?"], desc: "Show shortcuts overview" },
   ];
+
+  const playerShortcuts = [
+    { keys: ["Space"], desc: "Play / Pause" },
+    { keys: ["K"], desc: "Play / Pause" },
+    { keys: ["←", "→"], desc: "Seek backward / forward 5s" },
+    { keys: ["J", "L"], desc: "Seek backward / forward 10s" },
+    { keys: ["↑", "↓"], desc: "Volume up / down 10%" },
+    { keys: ["M"], desc: "Toggle mute" },
+    { keys: ["F"], desc: "Toggle player fullscreen" },
+    { keys: ["C"], desc: "Toggle subtitles" },
+    { keys: ["G", "H"], desc: "Subtitle offset ±100ms" },
+    { keys: ["Shift", "G/H"], desc: "Subtitle offset ±1.0s" },
+    { keys: ["Shift", "N"], desc: "Next episode" },
+    { keys: ["Shift", "P"], desc: "Previous episode" },
+    { keys: ["S"], desc: "Skip intro (AllManga)" },
+    { keys: ["/"], desc: "Search episodes inside season" },
+  ];
+
+  const shortcuts = tab === "global" ? globalShortcuts : playerShortcuts;
 
   return (
     <div
@@ -16,8 +40,8 @@ export default function KeyboardShortcutsModal({ onClose }) {
         position: "fixed",
         inset: 0,
         zIndex: 5000,
-        background: "rgba(0,0,0,0.72)",
-        backdropFilter: "blur(8px)",
+        background: "rgba(0,0,0,0.8)",
+        backdropFilter: "blur(12px)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -28,12 +52,15 @@ export default function KeyboardShortcutsModal({ onClose }) {
         style={{
           background: "var(--surface)",
           border: "1px solid var(--border)",
-          borderRadius: 14,
-          padding: "36px 40px",
-          minWidth: 380,
-          maxWidth: 480,
+          borderRadius: 16,
+          padding: "32px 36px",
+          minWidth: 420,
+          maxWidth: 520,
           width: "90%",
-          boxShadow: "0 24px 64px rgba(0,0,0,0.6)",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.7)",
+          display: "flex",
+          flexDirection: "column",
+          maxHeight: "85vh",
         }}
       >
         {/* Header */}
@@ -42,13 +69,13 @@ export default function KeyboardShortcutsModal({ onClose }) {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            marginBottom: 28,
+            marginBottom: 20,
           }}
         >
           <div
             style={{
               fontFamily: "var(--font-display)",
-              fontSize: 22,
+              fontSize: 20,
               letterSpacing: 1,
               color: "var(--text)",
             }}
@@ -76,8 +103,26 @@ export default function KeyboardShortcutsModal({ onClose }) {
           </button>
         </div>
 
-        {/* Shortcut rows */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {/* Tabs */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+          <button
+            className={`btn ${tab === "global" ? "btn-primary" : "btn-ghost"}`}
+            style={{ flex: 1, padding: "8px 12px", fontSize: 13 }}
+            onClick={() => setTab("global")}
+          >
+            Global Shortcuts
+          </button>
+          <button
+            className={`btn ${tab === "player" ? "btn-primary" : "btn-ghost"}`}
+            style={{ flex: 1, padding: "8px 12px", fontSize: 13 }}
+            onClick={() => setTab("player")}
+          >
+            Playback Controls
+          </button>
+        </div>
+
+        {/* Shortcut rows (scrollable container) */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, overflowY: "auto", flex: 1, paddingRight: 6 }}>
           {shortcuts.map(({ keys, desc }, i) => (
             <div
               key={i}
@@ -86,16 +131,16 @@ export default function KeyboardShortcutsModal({ onClose }) {
                 alignItems: "center",
                 justifyContent: "space-between",
                 gap: 16,
-                padding: "10px 14px",
+                padding: "8px 12px",
                 background: "var(--surface2)",
                 border: "1px solid var(--border)",
                 borderRadius: 8,
               }}
             >
-              <span style={{ fontSize: 14, color: "var(--text2)" }}>
+              <span style={{ fontSize: 13, color: "var(--text2)" }}>
                 {desc}
               </span>
-              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+              <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                 {keys.map((k, j) => (
                   <kbd
                     key={j}
@@ -103,16 +148,16 @@ export default function KeyboardShortcutsModal({ onClose }) {
                       display: "inline-flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      padding: "3px 9px",
+                      padding: "2px 8px",
                       background: "var(--surface)",
                       border: "1px solid var(--border)",
                       borderBottom: "2px solid rgba(255,255,255,0.12)",
-                      borderRadius: 5,
-                      fontSize: 12,
+                      borderRadius: 4,
+                      fontSize: 11,
                       fontWeight: 600,
                       color: "var(--text)",
                       fontFamily: "monospace",
-                      minWidth: 28,
+                      minWidth: 24,
                     }}
                   >
                     {k}

@@ -3056,6 +3056,9 @@ export default function SettingsPage({
   const [introSkipMode, setIntroSkipMode] = useState(
     () => storage.get(STORAGE_KEYS.INTRO_SKIP_MODE) || "off",
   );
+  const [defaultSubtitleOffset, setDefaultSubtitleOffset] = useState(
+    () => storage.get(STORAGE_KEYS.DEFAULT_SUBTITLE_OFFSET) ?? 0,
+  );
   const [saved, setSaved] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetHovered, setResetHovered] = useState(false);
@@ -3214,6 +3217,13 @@ export default function SettingsPage({
     const val = Math.max(1, Math.min(300, Number(watchedThreshold) || 20));
     setWatchedThreshold(val);
     storage.set(STORAGE_KEYS.WATCHED_THRESHOLD, val);
+    flash();
+  };
+
+  const handleSaveSubOffset = () => {
+    const val = Math.max(-5.0, Math.min(5.0, parseFloat(defaultSubtitleOffset) || 0));
+    setDefaultSubtitleOffset(val);
+    storage.set(STORAGE_KEYS.DEFAULT_SUBTITLE_OFFSET, val);
     flash();
   };
 
@@ -3750,6 +3760,51 @@ export default function SettingsPage({
               ))}
             </div>
           </div>
+
+          <Divider />
+
+          {/* Default Subtitle Offset */}
+          <div style={{ marginBottom: 40 }}>
+            <div className="settings-section-title">Default Subtitle Offset</div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--text3)",
+                marginBottom: 16,
+                lineHeight: 1.6,
+              }}
+            >
+              Adjust the default timing offset for subtitles (seconds). Negative shifts subtitles earlier, positive shifts them later.
+            </div>
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="-5.0"
+                  max="5.0"
+                  className="apikey-input"
+                  style={{ width: 100, marginBottom: 0 }}
+                  value={defaultSubtitleOffset}
+                  onChange={(e) => setDefaultSubtitleOffset(e.target.value)}
+                />
+                <span style={{ fontSize: 14, color: "var(--text2)" }}>
+                  seconds
+                </span>
+              </div>
+              <button className="btn btn-primary" onClick={handleSaveSubOffset}>
+                Save
+              </button>
+            </div>
+          </div>
+
           <Divider />
           <VideoSourcesSection />
         </div>

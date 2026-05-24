@@ -609,40 +609,74 @@ export default function App() {
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "f") {
-        e.preventDefault();
-        setShowSearch(true);
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        if (pageRef.current === "downloads") {
+      const tag = (e.target?.tagName || "").toUpperCase();
+      const isInput = tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable;
+
+      if ((e.metaKey || e.ctrlKey) && (e.key === "f" || e.key === "k" || e.key === "F" || e.key === "K")) {
+        if (e.key.toLowerCase() === "k" && pageRef.current === "downloads") {
           e.preventDefault();
           setDlSearchOpen(true);
+        } else {
+          e.preventDefault();
+          setShowSearch(true);
         }
       }
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        navigate("settings");
+      }
+      if ((e.metaKey || e.ctrlKey) && (e.key === "l" || e.key === "L")) {
+        e.preventDefault();
+        navigate("history");
+      }
+      if ((e.metaKey || e.ctrlKey) && (e.key === "h" || e.key === "H")) {
+        e.preventDefault();
+        navigate("home");
+      }
       if (e.key === "Escape") {
+        e.preventDefault();
         setShowSearch(false);
         setShowShortcuts(false);
       }
       if (e.key === "?" && !e.ctrlKey && !e.metaKey) {
-        const tag = (e.target?.tagName || "").toUpperCase();
-        if (tag !== "INPUT" && tag !== "TEXTAREA") {
+        if (!isInput) {
           e.preventDefault();
           setShowShortcuts((v) => !v);
         }
       }
       // Ctrl+Z / Cmd+Z → navigate back
-      if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "z" || e.key === "Z") && !e.shiftKey) {
         e.preventDefault();
         navigateBack();
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === "r") {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "r" || e.key === "R")) {
         e.preventDefault();
         window.location.reload();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [navigateBack]);
+  }, [navigateBack, navigate]);
+
+  // ── Custom event bindings for webview keyboard shortcuts bypass ───────────
+  useEffect(() => {
+    const handleOpenSearch = () => setShowSearch(true);
+    const handleOpenSettings = () => navigate("settings");
+    const handleOpenLibrary = () => navigate("history");
+    const handleOpenHome = () => navigate("home");
+
+    window.addEventListener("movievault:open-search", handleOpenSearch);
+    window.addEventListener("movievault:open-settings", handleOpenSettings);
+    window.addEventListener("movievault:open-library", handleOpenLibrary);
+    window.addEventListener("movievault:open-home", handleOpenHome);
+
+    return () => {
+      window.removeEventListener("movievault:open-search", handleOpenSearch);
+      window.removeEventListener("movievault:open-settings", handleOpenSettings);
+      window.removeEventListener("movievault:open-library", handleOpenLibrary);
+      window.removeEventListener("movievault:open-home", handleOpenHome);
+    };
+  }, [navigate]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const toastTimerRef = useRef(null);
@@ -783,7 +817,8 @@ export default function App() {
           lastWatchedAt: Date.now(),
           source: info.source,
           episodeTitle: info.episodeTitle ?? null,
-          isNextEpisode: !!info.isNextEpisode
+          isNextEpisode: !!info.isNextEpisode,
+          genres: info.item.genres || info.item.genre_ids || []
         };
         storage.set("watchHistory", next);
         return next;

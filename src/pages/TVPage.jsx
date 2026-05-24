@@ -510,6 +510,347 @@ export default function TVPage({
   const seekBackCooldownRef = useRef(0);
   const hasSeekedSavedTimeRef = useRef(false);
 
+  const [episodeQuery, setEpisodeQuery] = useState("");
+  const episodeSearchInputRef = useRef(null);
+
+  const [subtitleOffset, setSubtitleOffset] = useState(0);
+  const [feedbackText, setFeedbackText] = useState(null);
+  const feedbackTimerRef = useRef(null);
+
+  const showFeedback = useCallback((text) => {
+    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+    setFeedbackText(text);
+    feedbackTimerRef.current = setTimeout(() => setFeedbackText(null), 2000);
+  }, []);
+
+  const changeSubtitleOffset = useCallback((delta) => {
+    setSubtitleOffset((prev) => {
+      const next = Math.max(-5.0, Math.min(5.0, parseFloat((prev + delta).toFixed(1))));
+      if (currentProgressKey) {
+        storage.set("subOffset_" + currentProgressKey, next);
+      }
+      showFeedback(`Subtitle offset: ${next > 0 ? "+" : ""}${next.toFixed(1)}s`);
+      
+      const wv = webviewRef.current;
+      if (wv) {
+        wv.executeJavaScript(`
+          (() => {
+            const v = document.querySelector('video');
+            if (!v) return;
+            if (window.__subOffset === undefined) {
+              window.__subOffset = 0;
+            }
+            const oldOffset = window.__subOffset;
+            window.__subOffset = ${next};
+            const diff = window.__subOffset - oldOffset;
+            if (diff === 0) return;
+            for (let i = 0; i < v.textTracks.length; i++) {
+              const track = v.textTracks[i];
+              if (track.cues) {
+                for (let j = 0; j < track.cues.length; j++) {
+                  const cue = track.cues[j];
+                  cue.startTime += diff;
+                  cue.endTime += diff;
+                }
+              }
+            }
+          })()
+        `).catch(() => {});
+      }
+      return next;
+    });
+  }, [currentProgressKey, showFeedback]);
+
+  // Load saved subtitle offset when starting playback
+  useEffect(() => {
+    if (playing && currentProgressKey) {
+      const globalDefault = storage.get("defaultSubtitleOffset") ?? 0;
+      const savedOffset = storage.get("subOffset_" + currentProgressKey) ?? globalDefault;
+      const parsed = parseFloat(savedOffset) || 0;
+      setSubtitleOffset(parsed);
+      
+      // Inject the saved offset after 3 seconds to ensure textTracks are loaded
+      const t = setTimeout(() => {
+        const wv = webviewRef.current;
+        if (wv) {
+          wv.executeJavaScript(`
+            (() => {
+              const v = document.querySelector('video');
+              if (!v) return;
+              window.__subOffset = ${parsed};
+              for (let i = 0; i < v.textTracks.length; i++) {
+                const track = v.textTracks[i];
+                if (track.cues) {
+                  for (let j = 0; j < track.cues.length; j++) {
+                    const cue = track.cues[j];
+                    cue.startTime += ${parsed};
+                    cue.endTime += ${parsed};
+                  }
+                }
+              }
+            })()
+          `).catch(() => {});
+        }
+      }, 3500);
+      return () => clearTimeout(t);
+    }
+  }, [playing, currentProgressKey]);
+
+  const handlePlaybackKey = useCallback((key, shift, ctrl, meta, preventDefault) => {
+    const keyL = key.toLowerCase();
+
+    // 1. Global Navigation Shortcuts (Command/Control + key)
+    if (ctrl || meta) {
+      if (keyL === "k" || keyL === "f") {
+        if (preventDefault) preventDefault();
+        window.dispatchEvent(new CustomEvent("movievault:open-search"));
+        return;
+      }
+      if (key === ",") {
+        if (preventDefault) preventDefault();
+        window.dispatchEvent(new CustomEvent("movievault:open-settings"));
+        return;
+      }
+      if (keyL === "l") {
+        if (preventDefault) preventDefault();
+        window.dispatchEvent(new CustomEvent("movievault:open-library"));
+        return;
+      }
+      if (keyL === "h") {
+        if (preventDefault) preventDefault();
+        window.dispatchEvent(new CustomEvent("movievault:open-home"));
+        return;
+      }
+    }
+
+    // Focus season episode search on /
+    if (key === "/") {
+      const active = document.activeElement;
+      if (!active || !active.matches('input, textarea, [contenteditable="true"]')) {
+        if (preventDefault) preventDefault();
+        episodeSearchInputRef.current?.focus();
+        return;
+      }
+    }
+
+    // Escape: exit playback
+    if (key === "Escape") {
+      if (preventDefault) preventDefault();
+      onBack();
+      return;
+    }
+
+    const wv = webviewRef.current;
+    if (!wv) return;
+
+    // Play/Pause: Space or K
+    if (key === " " || keyL === "k") {
+      const active = document.activeElement;
+      if (active && active.matches('input, textarea, [contenteditable="true"]')) return;
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            if (v.paused) v.play();
+            else v.pause();
+            return !v.paused;
+          }
+          return null;
+        })()
+      `).then((res) => {
+        if (res !== null) showFeedback(res ? "Play" : "Pause");
+      }).catch(() => {});
+      return;
+    }
+
+    // Seek: ArrowLeft/ArrowRight (5s), J/L (10s)
+    if (key === "ArrowLeft") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.currentTime = Math.max(0, v.currentTime - 5);
+            return v.currentTime;
+          }
+          return null;
+        })()
+      `).catch(() => {});
+      return;
+    }
+    if (key === "ArrowRight") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.currentTime = Math.min(v.duration || Infinity, v.currentTime + 5);
+            return v.currentTime;
+          }
+          return null;
+        })()
+      `).catch(() => {});
+      return;
+    }
+    if (keyL === "j") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.currentTime = Math.max(0, v.currentTime - 10);
+            return v.currentTime;
+          }
+          return null;
+        })()
+      `).catch(() => {});
+      return;
+    }
+    if (keyL === "l") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.currentTime = Math.min(v.duration || Infinity, v.currentTime + 10);
+            return v.currentTime;
+          }
+          return null;
+        })()
+      `).catch(() => {});
+      return;
+    }
+
+    // Volume: ArrowUp/ArrowDown (10%)
+    if (key === "ArrowUp") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.volume = Math.max(0, Math.min(1, v.volume + 0.1));
+            v.muted = false;
+            return Math.round(v.volume * 100);
+          }
+          return null;
+        })()
+      `).then((vol) => {
+        if (vol !== null) showFeedback(`Volume: ${vol}%`);
+      }).catch(() => {});
+      return;
+    }
+    if (key === "ArrowDown") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.volume = Math.max(0, Math.min(1, v.volume - 0.1));
+            return Math.round(v.volume * 100);
+          }
+          return null;
+        })()
+      `).then((vol) => {
+        if (vol !== null) showFeedback(`Volume: ${vol}%`);
+      }).catch(() => {});
+      return;
+    }
+
+    // Mute: M
+    if (keyL === "m") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.muted = !v.muted;
+            return v.muted;
+          }
+          return null;
+        })()
+      `).then((muted) => {
+        if (muted !== null) showFeedback(muted ? "Muted" : "Unmuted");
+      }).catch(() => {});
+      return;
+    }
+
+    // Fullscreen: F
+    if (keyL === "f") {
+      if (preventDefault) preventDefault();
+      setPlayerFullscreen((prev) => {
+        const next = !prev;
+        if (next) {
+          document.documentElement.setAttribute("data-player-fullscreen", "1");
+        } else {
+          document.documentElement.removeAttribute("data-player-fullscreen");
+        }
+        return next;
+      });
+      return;
+    }
+
+    // Toggle Subtitles: C
+    if (keyL === "c") {
+      if (preventDefault) preventDefault();
+      wv.executeJavaScript(`
+        (() => {
+          const v = document.querySelector('video');
+          if (!v) return null;
+          let active = false;
+          for (let i = 0; i < v.textTracks.length; i++) {
+            const track = v.textTracks[i];
+            track.mode = track.mode === 'showing' ? 'hidden' : 'showing';
+            active = track.mode === 'showing';
+          }
+          return active;
+        })()
+      `).then((active) => {
+        if (active !== null) showFeedback(active ? "Subtitles On" : "Subtitles Off");
+      }).catch(() => {});
+      return;
+    }
+
+    // Subtitle offset: G / H
+    if (keyL === "g" || keyL === "h") {
+      if (preventDefault) preventDefault();
+      const delta = keyL === "g" ? (shift ? -1.0 : -0.1) : (shift ? 1.0 : 0.1);
+      changeSubtitleOffset(delta);
+      return;
+    }
+
+    // Next Episode: Shift + N
+    if (key === "N" && shift) {
+      if (preventDefault) preventDefault();
+      const currentEpNum = selectedEp?.episode_number;
+      const nextEp = currentSeasonEpisodes.find((e) => e.episode_number === currentEpNum + 1);
+      if (nextEp) {
+        playEpisode(nextEp);
+        showFeedback(`Playing Episode ${nextEp.episode_number}`);
+      }
+      return;
+    }
+
+    // Prev Episode: Shift + P
+    if (key === "P" && shift) {
+      if (preventDefault) preventDefault();
+      const currentEpNum = selectedEp?.episode_number;
+      const prevEp = currentSeasonEpisodes.find((e) => e.episode_number === currentEpNum - 1);
+      if (prevEp) {
+        playEpisode(prevEp);
+        showFeedback(`Playing Episode ${prevEp.episode_number}`);
+      }
+      return;
+    }
+
+    // Skip Intro: S
+    if (keyL === "s") {
+      if (preventDefault) preventDefault();
+      handleManualSkip();
+      return;
+    }
+  }, [onBack, changeSubtitleOffset, showFeedback, selectedEp, currentSeasonEpisodes, playEpisode, handleManualSkip]);
+
   const fetchDetails = useCallback(() => {
     let mounted = true;
     setLoading(true);
@@ -931,6 +1272,16 @@ export default function TVPage({
     seasonData,
   ]);
 
+  const filteredEpisodes = useMemo(() => {
+    if (!episodeQuery.trim()) return currentSeasonEpisodes;
+    const q = episodeQuery.toLowerCase().trim();
+    return currentSeasonEpisodes.filter(
+      (ep) =>
+        (ep.name || "").toLowerCase().includes(q) ||
+        String(ep.episode_number) === q
+    );
+  }, [currentSeasonEpisodes, episodeQuery]);
+
   // ── Downloads lookup map: O(1) per episode instead of O(n) ───────────────
   const downloadsByEpisodeKey = useMemo(() => {
     const map = new Map();
@@ -1228,8 +1579,19 @@ export default function TVPage({
       handleFailover();
     };
 
+    const handleWebviewInput = (e) => {
+      handlePlaybackKey(
+        e.key,
+        e.shift,
+        e.control,
+        e.meta,
+        () => e.preventDefault()
+      );
+    };
+
     wv.addEventListener("did-finish-load", handleFinished);
     wv.addEventListener("did-fail-load", handleFailed);
+    wv.addEventListener("before-input-event", handleWebviewInput);
 
     // Poll up to 30s for video duration (metadata may load after buffering starts)
     let durationAttempts = 0;
@@ -1253,9 +1615,26 @@ export default function TVPage({
     return () => {
       wv.removeEventListener("did-finish-load", handleFinished);
       wv.removeEventListener("did-fail-load", handleFailed);
+      wv.removeEventListener("before-input-event", handleWebviewInput);
       clearInterval(pollDuration);
     };
-  }, [playing, playerSource, item.id, selectedSeason, selectedEp?.episode_number, failoverQueue, currentQueueIndex, handleFailover]);
+  }, [playing, playerSource, item.id, selectedSeason, selectedEp?.episode_number, failoverQueue, currentQueueIndex, handleFailover, handlePlaybackKey]);
+
+  // Window keydown listener for cases where focus is not trapped in webview
+  useEffect(() => {
+    if (!playing) return;
+    const handleWinKey = (e) => {
+      handlePlaybackKey(
+        e.key,
+        e.shiftKey,
+        e.ctrlKey,
+        e.metaKey,
+        () => e.preventDefault()
+      );
+    };
+    window.addEventListener("keydown", handleWinKey);
+    return () => window.removeEventListener("keydown", handleWinKey);
+  }, [playing, handlePlaybackKey]);
 
   // ── AniSkip: fetch timings when episode changes ───────────────────────────
   useEffect(() => {
@@ -2267,6 +2646,11 @@ export default function TVPage({
                     </span>
                   </button>
                 )}
+                {feedbackText && (
+                  <div className="player-feedback-overlay">
+                    {feedbackText}
+                  </div>
+                )}
               </div>
 
               {currentProgressKey &&
@@ -2349,8 +2733,19 @@ export default function TVPage({
             </div>
           )}
 
-          <div className="section">
-            <div className="section-title">Episodes</div>
+          <div className="section" style={{ position: "relative" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <div className="section-title" style={{ margin: 0 }}>Episodes</div>
+              <input
+                ref={episodeSearchInputRef}
+                type="text"
+                className="apikey-input"
+                style={{ width: 220, margin: 0, padding: "6px 12px", fontSize: 13 }}
+                placeholder="Search episodes... (Press /)"
+                value={episodeQuery}
+                onChange={(e) => setEpisodeQuery(e.target.value)}
+              />
+            </div>
             {seasons.length > 0 && (
               <div className="season-selector">
                 {seasons.map((s) => {
@@ -2411,7 +2806,7 @@ export default function TVPage({
             <AsyncBoundary state={seasonState} onRetry={fetchSeasonData}>
               {(seasonData?.episodes || episodeGroupCurrentEpisodes?.length) && (
                 <div className="episodes-grid">
-                  {currentSeasonEpisodes.map((ep) => {
+                  {filteredEpisodes.map((ep) => {
                     const pk = `tv_${item.id}_s${selectedSeason}e${ep.episode_number}`;
                     return (
                       <EpisodeCard
