@@ -391,6 +391,7 @@ export default function DownloadModal({
   const [downloader, setDownloader] = useState(null);
   const [checking, setChecking] = useState(false);
   const [downloadStatus, setDownloadStatus] = useState(null);
+  const [urlCopied, setUrlCopied] = useState(false);
 
   const [subEnabled, setSubEnabled] = useState(
     () =>
@@ -705,15 +706,40 @@ export default function DownloadModal({
                 className="spinner"
                 style={{ width: 24, height: 24, borderWidth: 2 }}
               />
-              Waiting for stream URL … (start the video first)
+              <div>
+                <div style={{ marginBottom: 4 }}>Waiting for stream URL…</div>
+                <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5 }}>
+                  Start playing the video, then click
+                  the ⤓ download button again once the video is
+                  loaded.
+                </div>
+              </div>
             </div>
           )}
 
           {m3u8Url && (
             <>
               <div className="download-url-block">
-                <div className="download-url-label">Stream URL found</div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                  <div className="download-url-label">Stream URL found</div>
+                  <button
+                    className="btn btn-ghost"
+                    style={{ padding: "3px 10px", fontSize: 11 }}
+                    onClick={() => {
+                      navigator.clipboard.writeText(m3u8Url).then(() => {
+                        setUrlCopied(true);
+                        setTimeout(() => setUrlCopied(false), 2000);
+                      }).catch(() => {});
+                    }}
+                    title="Copy stream URL to clipboard"
+                  >
+                    {urlCopied ? "✓ Copied!" : "📋 Copy URL"}
+                  </button>
+                </div>
                 <code className="download-url-code">{m3u8Url}</code>
+                <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 6, lineHeight: 1.5 }}>
+                  Copy this URL to use with yt-dlp or other tools if the built-in downloader is not configured.
+                </div>
               </div>
 
               {/* ── Subtitle section ──────────────────────────────────────── */}

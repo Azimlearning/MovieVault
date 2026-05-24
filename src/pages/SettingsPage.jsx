@@ -3082,6 +3082,9 @@ export default function SettingsPage({
   const [defaultSubtitleOffset, setDefaultSubtitleOffset] = useState(
     () => storage.get(STORAGE_KEYS.DEFAULT_SUBTITLE_OFFSET) ?? 0,
   );
+  const [autoNextEpisode, setAutoNextEpisode] = useState(
+    () => storage.get(STORAGE_KEYS.AUTO_NEXT_EPISODE) !== false,
+  );
   const [discordRpcEnabled, setDiscordRpcEnabled] = useState(
     () => storage.get("discordRpcEnabled") !== false
   );
@@ -3763,6 +3766,61 @@ export default function SettingsPage({
                 ✓ Saved
               </div>
             )}
+          </div>
+
+          {/* Auto-Play Next Episode */}
+          <div style={{ marginBottom: 32 }}>
+            <div className="settings-section-title">Auto-Play Next Episode</div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--text3)",
+                marginBottom: 16,
+                lineHeight: 1.6,
+              }}
+            >
+              When enabled, an “Up Next” banner appears during the last 30
+              seconds of an episode and automatically plays the next one after
+              a countdown — just like Netflix.
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <button
+                onClick={() => {
+                  const next = !autoNextEpisode;
+                  setAutoNextEpisode(next);
+                  storage.set(STORAGE_KEYS.AUTO_NEXT_EPISODE, next);
+                }}
+                title={autoNextEpisode ? "Disable auto-play" : "Enable auto-play"}
+                style={{
+                  width: 44,
+                  height: 24,
+                  borderRadius: 12,
+                  border: "1px solid var(--border)",
+                  cursor: "pointer",
+                  background: autoNextEpisode ? "var(--red)" : "var(--surface2)",
+                  position: "relative",
+                  transition: "background 0.2s",
+                  flexShrink: 0,
+                  outline: "none",
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    top: 3,
+                    left: autoNextEpisode ? 22 : 3,
+                    width: 16,
+                    height: 16,
+                    borderRadius: "50%",
+                    background: "#fff",
+                    transition: "left 0.2s",
+                  }}
+                />
+              </button>
+              <span style={{ fontSize: 14, color: "var(--text2)" }}>
+                {autoNextEpisode ? "Enabled" : "Disabled"}
+              </span>
+            </div>
           </div>
 
           {/* Intro Skip */}

@@ -83,6 +83,8 @@ export const STORAGE_KEYS = {
   DL_SHOW_UNTRACKED: "dlShowUntracked",
   // Cache for new-episode startup check
   EPISODE_RELEASE_CACHE: "episodeReleaseCache",
+  // Auto-next episode (Netflix-style countdown)
+  AUTO_NEXT_EPISODE: "autoNextEpisode",
 };
 
 export const getApiKey = () => storage.get(STORAGE_KEYS.API_KEY);

@@ -428,6 +428,12 @@ export default function TVPage({
   const [introSkipMode] = useState(
     () => storage.get(STORAGE_KEYS.INTRO_SKIP_MODE) || "off",
   );
+  const [autoNextEp, setAutoNextEp] = useState(null); // next episode for auto-play
+  const [autoNextCountdown, setAutoNextCountdown] = useState(null); // seconds remaining
+  const autoNextTimerRef = useRef(null);
+  const [autoNextEnabled] = useState(
+    () => storage.get(STORAGE_KEYS.AUTO_NEXT_EPISODE) !== false,
+  );
   const sourceRef = useRef(null);
   const playerWrapRef = useRef(null);
   const webviewRef = useRef(null);
@@ -1460,13 +1466,19 @@ export default function TVPage({
 
 
 
-  // Reset auto-mark guard when episode changes
+  // Reset auto-mark guard and auto-next banner when episode changes
   useEffect(() => {
     autoMarkedRef.current = false;
     lastKnownTimeRef.current = 0;
     seekBackCooldownRef.current = 0;
     durationRef.current = 0;
     hasSeekedSavedTimeRef.current = false;
+    setAutoNextEp(null);
+    setAutoNextCountdown(null);
+    if (autoNextTimerRef.current) {
+      clearInterval(autoNextTimerRef.current);
+      autoNextTimerRef.current = null;
+    }
   }, [currentProgressKey]);
 
   // Auto-play episode from continue watching / select result
@@ -1877,6 +1889,19 @@ export default function TVPage({
             // Auto-mark watched when remaining time ≤ threshold or pct >= 90
             const remaining = result.duration - ct;
             const pctVal = Math.min(p, 100);
+
+            // Show "Up Next" banner when ≤30s remain and there's a next episode
+            const currentEpNum = selectedEp?.episode_number;
+            const nextEpCandidate = currentSeasonEpisodes.find(e => e.episode_number === currentEpNum + 1);
+            if (autoNextEnabled && nextEpCandidate && remaining > 0 && remaining <= 30 && !autoMarkedRef.current) {
+              setAutoNextEp(nextEpCandidate);
+              const countdownSecs = Math.max(1, Math.round(Math.min(remaining, 15)));
+              setAutoNextCountdown(prev => {
+                if (prev === null) return countdownSecs;
+                return prev; // don't reset if already counting
+              });
+            }
+
             if (
               !autoMarkedRef.current &&
               (remaining <= watchedThreshold || pctVal >= 90) &&
@@ -1886,7 +1911,6 @@ export default function TVPage({
               onMarkWatchedRef.current?.(currentProgressKey);
 
               // Find next episode for auto-progression
-              const currentEpNum = selectedEp?.episode_number;
               const nextEp = currentSeasonEpisodes.find(e => e.episode_number === currentEpNum + 1);
               if (nextEp) {
                 const nextKey = `tv_${item.id}_s${selectedSeason}e${nextEp.episode_number}`;
@@ -1942,6 +1966,34 @@ export default function TVPage({
     selectedEp,
     item,
   ]);
+
+  // Auto-next countdown ticker
+  useEffect(() => {
+    if (autoNextCountdown === null || autoNextEp === null) return;
+    if (autoNextTimerRef.current) clearInterval(autoNextTimerRef.current);
+    autoNextTimerRef.current = setInterval(() => {
+      setAutoNextCountdown(prev => {
+        if (prev === null || prev <= 1) {
+          clearInterval(autoNextTimerRef.current);
+          autoNextTimerRef.current = null;
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => {
+      if (autoNextTimerRef.current) clearInterval(autoNextTimerRef.current);
+    };
+  }, [autoNextCountdown !== null, autoNextEp]); // only (re)start when banner first appears
+
+  // Trigger playEpisode when countdown hits 0
+  useEffect(() => {
+    if (autoNextCountdown === 0 && autoNextEp) {
+      playEpisode(autoNextEp);
+      setAutoNextEp(null);
+      setAutoNextCountdown(null);
+    }
+  }, [autoNextCountdown, autoNextEp, playEpisode]);
 
   // Skip backward/forward by N seconds via webview JS injection
   const seekBy = useCallback(async (seconds) => {
@@ -2591,6 +2643,84 @@ export default function TVPage({
                 </button>
 
                 {/* Skip controls are injected directly into the webview DOM*/}
+
+                {/* ── Auto-Next Episode Banner (Netflix-style) ────────────────── */}
+                {autoNextEp && autoNextCountdown !== null && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      bottom: 72,
+                      right: 24,
+                      zIndex: 60,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-end",
+                      gap: 8,
+                      animation: "slideDown 0.3s ease",
+                    }}
+                  >
+                    <div
+                      style={{
+                        background: "rgba(10,10,10,0.92)",
+                        border: "1px solid rgba(255,255,255,0.15)",
+                        borderRadius: 12,
+                        padding: "14px 18px",
+                        backdropFilter: "blur(12px)",
+                        WebkitBackdropFilter: "blur(12px)",
+                        minWidth: 260,
+                        maxWidth: 320,
+                        boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+                      }}
+                    >
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text3)", letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
+                        Up Next
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        E{autoNextEp.episode_number}: {autoNextEp.name}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 12 }}>
+                        Playing in {autoNextCountdown}s…
+                      </div>
+                      {/* Progress bar */}
+                      <div style={{ height: 2, background: "rgba(255,255,255,0.1)", borderRadius: 1, marginBottom: 12, overflow: "hidden" }}>
+                        <div
+                          style={{
+                            height: "100%",
+                            background: "var(--red)",
+                            borderRadius: 1,
+                            width: `${(1 - autoNextCountdown / 15) * 100}%`,
+                            transition: "width 1s linear",
+                          }}
+                        />
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                          className="btn btn-primary"
+                          style={{ flex: 1, justifyContent: "center", fontSize: 13, padding: "7px 12px" }}
+                          onClick={() => {
+                            if (autoNextTimerRef.current) clearInterval(autoNextTimerRef.current);
+                            playEpisode(autoNextEp);
+                            setAutoNextEp(null);
+                            setAutoNextCountdown(null);
+                          }}
+                        >
+                          ▶ Play Now
+                        </button>
+                        <button
+                          className="btn btn-ghost"
+                          style={{ fontSize: 13, padding: "7px 12px" }}
+                          onClick={() => {
+                            if (autoNextTimerRef.current) clearInterval(autoNextTimerRef.current);
+                            setAutoNextEp(null);
+                            setAutoNextCountdown(null);
+                          }}
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* AniSkip manual prompt, rendered in streambert UI, outside webview */}
                 {skipPrompt && (
