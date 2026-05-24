@@ -23,6 +23,7 @@ app.commandLine.appendSwitch(
 );
 // Run the network stack in the browser process → one less utility process
 app.commandLine.appendSwitch("enable-features", "NetworkServiceInProcess2");
+app.commandLine.appendSwitch("ignore-certificate-errors");
 // NOTE: enable-low-end-device-mode removed, it cuts the GPU texture tile budget
 // and causes visible seams/stripes/dots on large images.
 
