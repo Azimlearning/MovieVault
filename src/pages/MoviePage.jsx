@@ -125,6 +125,69 @@ export default function MoviePage({
   const [feedbackText, setFeedbackText] = useState(null);
   const feedbackTimerRef = useRef(null);
 
+  const [downloaderFolder, setDownloaderFolder] = useState(
+    () => storage.get("downloaderFolder") || "",
+  );
+  const [rating, setRating] = useState({ cert: null, minAge: null });
+
+  const progressKey = `movie_${item.id}`;
+  const pct = progress[progressKey] || 0;
+  const isWatched = !!watched?.[progressKey];
+  const hasProgress = pct > 0;
+
+  const d = details || item;
+  const title = d.title || d.name;
+  const year = (d.release_date || "").slice(0, 4);
+  const mediaName = `${title}${year ? " (" + year + ")" : ""}`;
+
+  const isAnime = useMemo(
+    () => isAnimeContent(item, details),
+    [item.id, details],
+  );
+
+  const { watchedSecs, totalSecs, displayPct, progressLabel } = useMemo(() => {
+    const watchedSecs = storage.get("dlTime_" + progressKey) || 0;
+    const totalSecs = d?.runtime ? d.runtime * 60 : 0;
+    const derivedPct =
+      watchedSecs > 0 && totalSecs > 0
+        ? Math.floor((watchedSecs / totalSecs) * 100)
+        : 0;
+    const displayPct = pct > 0 ? pct : derivedPct;
+    const fmt = (s) => {
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = Math.floor(s % 60);
+      return h > 0
+        ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`
+        : `${m}:${String(sec).padStart(2, "0")}`;
+    };
+    const progressLabel =
+      watchedSecs > 0 && totalSecs > 0
+        ? `${fmt(watchedSecs)} / ${fmt(totalSecs)}`
+        : watchedSecs > 0
+          ? fmt(watchedSecs)
+          : displayPct > 0
+            ? `${displayPct}%`
+            : null;
+    return { watchedSecs, totalSecs, displayPct, progressLabel };
+  }, [progressKey, pct, d?.runtime]);
+
+  const [watchedThreshold] = useState(
+    () => storage.get("watchedThreshold") ?? 20,
+  );
+
+  const ageLimitSetting = useMemo(() => getAgeLimitSetting(storage), []);
+  const ratingCountry = useMemo(() => getRatingCountry(storage), []);
+  const restricted = isRestricted(rating.minAge, ageLimitSetting);
+
+  // Ref to prevent double-marking
+  const autoMarkedRef = useRef(false);
+  // Tracks last known playback position, used to detect resolution-change resets
+  const lastKnownTimeRef = useRef(0);
+  const hasSeekedSavedTimeRef = useRef(false);
+  // Timestamp until which we ignore reset detection (post-seekback cooldown)
+  const seekBackCooldownRef = useRef(0);
+
   const showFeedback = useCallback((text) => {
     if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
     setFeedbackText(text);
@@ -440,80 +503,7 @@ export default function MoviePage({
     setResolvingUrl(false);
   }, []);
 
-  // Derived: detect anime before any effects so effects can use it
-  const isAnime = useMemo(
-    () => isAnimeContent(item, details),
-    [item.id, details],
-  );
-  const [downloaderFolder, setDownloaderFolder] = useState(
-    () => storage.get("downloaderFolder") || "",
-  );
 
-  // Blocked request stats
-  const {
-    sessionTotal: blockedSession,
-    alltimeTotal: blockedAlltime,
-    showModal: showBlockedModal,
-    setShowModal: setShowBlockedModal,
-    getSessionDomains: getBlockedDomains,
-  } = useBlockedStats(item.id);
-
-  // Age rating
-  const [rating, setRating] = useState({ cert: null, minAge: null });
-  const ageLimitSetting = useMemo(() => getAgeLimitSetting(storage), []);
-  const ratingCountry = useMemo(() => getRatingCountry(storage), []);
-  const restricted = isRestricted(rating.minAge, ageLimitSetting);
-
-  const progressKey = `movie_${item.id}`;
-  const pct = progress[progressKey] || 0;
-  const isWatched = !!watched?.[progressKey];
-  const hasProgress = pct > 0;
-
-  // ── Derived display values (must be declared before any callbacks that use them) ──
-  const d = details || item;
-  const title = d.title || d.name;
-  const year = (d.release_date || "").slice(0, 4);
-  const mediaName = `${title}${year ? " (" + year + ")" : ""}`;
-
-  const { watchedSecs, totalSecs, displayPct, progressLabel } = useMemo(() => {
-    const watchedSecs = storage.get("dlTime_" + progressKey) || 0;
-    const totalSecs = d?.runtime ? d.runtime * 60 : 0;
-    const derivedPct =
-      watchedSecs > 0 && totalSecs > 0
-        ? Math.floor((watchedSecs / totalSecs) * 100)
-        : 0;
-    const displayPct = pct > 0 ? pct : derivedPct;
-    const fmt = (s) => {
-      const h = Math.floor(s / 3600);
-      const m = Math.floor((s % 3600) / 60);
-      const sec = Math.floor(s % 60);
-      return h > 0
-        ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`
-        : `${m}:${String(sec).padStart(2, "0")}`;
-    };
-    const progressLabel =
-      watchedSecs > 0 && totalSecs > 0
-        ? `${fmt(watchedSecs)} / ${fmt(totalSecs)}`
-        : watchedSecs > 0
-          ? fmt(watchedSecs)
-          : displayPct > 0
-            ? `${displayPct}%`
-            : null;
-    return { watchedSecs, totalSecs, displayPct, progressLabel };
-  }, [progressKey, pct, d?.runtime]);
-
-  // Read threshold from settings (default 20s), stable across renders
-  const [watchedThreshold] = useState(
-    () => storage.get("watchedThreshold") ?? 20,
-  );
-
-  // Ref to prevent double-marking
-  const autoMarkedRef = useRef(false);
-  // Tracks last known playback position, used to detect resolution-change resets
-  const lastKnownTimeRef = useRef(0);
-  const hasSeekedSavedTimeRef = useRef(false);
-  // Timestamp until which we ignore reset detection (post-seekback cooldown)
-  const seekBackCooldownRef = useRef(0);
 
   const fetchDetails = useCallback(() => {
     let mounted = true;
