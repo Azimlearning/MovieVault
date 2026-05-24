@@ -66,7 +66,7 @@ export default function WindowTitlebar() {
           textOverflow: "ellipsis",
         }}
       >
-        STREAMBERT
+        MOVIEVAULT
       </div>
 
       {/* Window control buttons, NOT draggable */}

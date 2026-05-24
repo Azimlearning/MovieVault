@@ -1,15 +1,21 @@
-[![Downloads@latest](https://img.shields.io/github/downloads/truelockmc/streambert/latest/total?style=for-the-badge)](https://github.com/truelockmc/streambert/releases/latest/)
-[![Release Version Badge](https://img.shields.io/github/v/release/truelockmc/streambert?style=for-the-badge)](https://github.com/truelockmc/streambert/releases)
-[![Issues Badge](https://img.shields.io/github/issues/truelockmc/streambert?style=for-the-badge)](https://github.com/truelockmc/streambert/issues)
-[![Closed Issues Badge](https://img.shields.io/github/issues-closed/truelockmc/streambert?color=%238256d0&style=for-the-badge)](https://github.com/truelockmc/streambert/issues?q=is%3Aissue+is%3Aclosed)<br>
-
-[![GitHub](https://img.shields.io/badge/GitHub-truelockmc%2Fstreambert-181717?logo=github)](https://github.com/truelockmc/streambert)
-[![Codeberg](https://img.shields.io/badge/Codeberg-truelockmc%2Fstreambert-2185D0?logo=codeberg)](https://codeberg.org/truelockmc/streambert)
+[![GitHub Fork](https://img.shields.io/badge/Forked%20From-truelockmc%2Fstreambert-181717?logo=github&style=for-the-badge)](https://github.com/truelockmc/streambert)
+[![GitHub](https://img.shields.io/badge/GitHub-Azimlearning%2FMovieVault-181717?logo=github&style=for-the-badge)](https://github.com/Azimlearning/MovieVault)
 
 # MovieVault
-A cross-platform Electron Desktop App to stream and download any Movie, TV Series or Anime in the World. Zero Ads and Tracking <br></br>
-![Logo](public/logo.svg)
-[Installation](https://github.com/Azimlearning/MovieVault?tab=readme-ov-file#requirements)
+MovieVault is a cross-platform Electron Desktop App to stream and download any Movie, TV Series or Anime in the world, with zero ads or trackers.
+
+> [!NOTE]
+> **This is a personal project modified for personal use.** It is a customized fork of the original [Streambert](https://github.com/truelockmc/streambert) repository by `truelockmc`.
+
+### Added Features & Modifications in this Fork:
+* 🎬 **Netflix-Style Auto-Play next episode:** Displays a 15-second countdown banner 30s before the end of TV episodes to auto-advance to the next episode (fully overlays in custom fullscreen mode).
+* ⚙️ **Videasy priority source:** Defaults to loading the highly stable Videasy player first, automatically failing over to VidSrc/2Embed only if issues occur, and resetting the failover queue on Retry.
+* ⚡ **Autoplay execution:** Bypasses browser gesture restrictions via Chromium flags and custom IPC subframe script injection to start video streams automatically on loading a title.
+* 📊 **Library Dashboard & Stats:** Adds tabs (*Watching, Watchlist, Finished, Stats*), streak counters, hours watched metrics, and top genre popularity indicators.
+* 🔗 **Trakt, AniList & Discord integration:** Syncs playback stats to Trakt/AniList via a local OAuth loopback server, and reflects watch state on Discord Rich Presence.
+* 🔍 **Fuzzy library search:** Employs character subsequence matching for robust local database search.
+
+[Installation](#installation) | [Requirements](#requirements)
 
 ## Why MovieVault?
 - 🎦 **Streaming:** Stream any Movie, Anime or TV Series from around the World.
@@ -52,57 +58,54 @@ Media Files for Animes are scraped from AllManga.to (i stole this mechanic from 
 
 ## Requirements
 
-- [Node.js](https://nodejs.org/) (>=22.12.0) installed (only if you aren't using [prebuilt Binaries](https://github.com/truelockmc/streambert/releases/latest))
+- [Node.js](https://nodejs.org/) (>=22.12.0) installed (for building and running from source)
 - A free TMDB API Read Access Token ([Guide on how to get one](tmdb-tutorial.md))
-- For downloading, [this Program](https://github.com/truelockmc/vid-dl-cli-only/releases/latest) somewhere on your PC and [ffmpeg](https://ffmpeg.org/download.html) installed
+- For downloading:
+  1. Download the [vid-dl-cli-only](https://github.com/truelockmc/vid-dl-cli-only/releases/latest) binary.
+  2. Put it somewhere on your PC and configure its path in MovieVault (under Settings -> Downloads).
+  3. Ensure [ffmpeg](https://ffmpeg.org/download.html) is installed and available in your system PATH.
 
 ---
-## Installation
-On first launch you'll be prompted to enter your TMDB API key. ([Guide on how to get one](tmdb-tutorial.md))
-It's saved locally, you only need to do this once.
+## Setup & Installation
 
-### Linux, Manual (.deb / .AppImage / .pacman)
+On first launch, MovieVault will prompt you to enter your TMDB API token. This is saved securely in local storage, so you only need to do this once.
 
-Download the latest `.deb` `.pacman` or `.AppImage` from the [Releases](https://github.com/truelockmc/streambert/releases/latest) page.
-```bash
-# .deb
-sudo dpkg -i streambert_*.deb
+### Running from Source (Recommended)
+Since this is a personal fork, running directly from source is the easiest way to use the app and get the latest updates:
 
-# Arch Linux (.pacman)
-sudo pacman -U streambert-*.pacman
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/Azimlearning/MovieVault.git
+   cd MovieVault
+   ```
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+3. **Build the web components and start the app:**
+   ```bash
+   npm start
+   ```
 
-# .AppImage (you can also do it with Gearlever)
-chmod +x Streambert-x64.AppImage && ./Streambert-x64.AppImage
-```
+### Building Distribution Binaries
+If you want to package MovieVault into a standalone executable:
 
-### Windows
-
-Download the latest `Streambert Setup *.exe` from the [Releases](https://github.com/truelockmc/streambert/releases/latest) page and run it.
-
----
-
-
-## Building from Source
-1. Install dependencies:
-```bash
-npm install
-```
-2. Build
-```bash
-npm run dist:win
-```
-or
-```bash
-npm run dist:linux
-```
-or (for Arch Linux)
-```bash
-npm run dist:arch
-```
-or (for an AppImage only)
-```bash
-npm run dist:appimage
-```
+* **Windows Portable/Installer:**
+  ```bash
+  npm run dist:win
+  ```
+* **Linux (.deb, .AppImage, .pacman):**
+  ```bash
+  npm run dist:linux
+  ```
+* **Arch Linux (.pacman only):**
+  ```bash
+  npm run dist:arch
+  ```
+* **AppImage only:**
+  ```bash
+  npm run dist:appimage
+  ```
 
 > [!IMPORTANT]
 > If you are building/installing on Arch Linux and encounter errors, you may need these libraries:
@@ -113,14 +116,14 @@ npm run dist:appimage
 
 **IMPORTANT: This application is for educational and personal use only.**
 
-- Streambert does not host, store, or distribute any copyrighted content
+- MovieVault does not host, store, or distribute any copyrighted content
 - All content is sourced from third-party providers and websites
 - Users are solely responsible for ensuring they have legal rights to access any content
 - The developer does not endorse or encourage copyright infringement
 - Users must comply with all applicable laws in their jurisdiction
 - Any legal issues should be directed to the actual content providers
 - This app functions as a search engine aggregator only
-- No copyrighted material is stored on my side
+- No copyrighted material is stored on our side
 
 ## Legal Notice
 
