@@ -24,6 +24,7 @@ app.commandLine.appendSwitch(
 // Run the network stack in the browser process → one less utility process
 app.commandLine.appendSwitch("enable-features", "NetworkServiceInProcess2");
 app.commandLine.appendSwitch("ignore-certificate-errors");
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 // NOTE: enable-low-end-device-mode removed, it cuts the GPU texture tile budget
 // and causes visible seams/stripes/dots on large images.
 
@@ -266,9 +267,10 @@ function createWindow() {
     } catch {}
 
     wc.setWindowOpenHandler(() => ({ action: "deny" }));
-    wc.on("enter-html-full-screen", () =>
-      mainWindow.webContents.send("webview-enter-fullscreen"),
-    );
+    wc.on("enter-html-full-screen", (e) => {
+      e.preventDefault();
+      mainWindow.webContents.send("webview-enter-fullscreen");
+    });
     wc.on("leave-html-full-screen", () =>
       mainWindow.webContents.send("webview-leave-fullscreen"),
     );

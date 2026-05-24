@@ -448,7 +448,7 @@ export const isAnimeContent = (item, details) => {
 
 // Default sources
 export const ANIME_DEFAULT_SOURCE = "allmanga";
-export const NON_ANIME_DEFAULT_SOURCE = "vidsrc";
+export const NON_ANIME_DEFAULT_SOURCE = "videasy";
 
 // ── Episode Group fetch (localStorage + in-memory cache, 7-day TTL) ─────────
 // Episode groups almost never change -> cache aggressively across sessions.

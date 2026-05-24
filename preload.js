@@ -108,6 +108,8 @@ contextBridge.exposeInMainWorld("electron", {
   clearAppCache: () => ipcRenderer.invoke("clear-app-cache").then((r) => r.ok ? r.data : null),
   queryVideoProgress: (webContentsId) =>
     ipcRenderer.invoke("query-video-progress", webContentsId).then((r) => r.ok ? r.data : null),
+  autoplayVideo: (webContentsId) =>
+    ipcRenderer.invoke("autoplay-video", webContentsId).then((r) => r.ok ? r.data : false),
   clearWatchData: () => ipcRenderer.invoke("clear-watch-data").then((r) => r.ok ? { ok: true } : { ok: false, error: r.error?.message }),
   deleteAllDownloads: () => ipcRenderer.invoke("delete-all-downloads").then((r) => r.ok ? { ok: true, ...r.data } : { ok: false, error: r.error?.message }),
   resetApp: () => ipcRenderer.invoke("reset-app").then((r) => r.ok ? { ok: true } : { ok: false, error: r.error?.message }),

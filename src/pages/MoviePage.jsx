@@ -853,6 +853,16 @@ export default function MoviePage({
       
       const activeSourceId = failoverQueue[currentQueueIndex] || playerSource;
       sourceQueue.saveLastGoodSource(item.id, null, null, activeSourceId);
+
+      const runAutoplay = () => {
+        if (window.electron?.autoplayVideo && wv && !wv.isDestroyed?.()) {
+          window.electron.autoplayVideo(wv.getWebContentsId()).catch(() => {});
+        }
+      };
+      runAutoplay();
+      setTimeout(runAutoplay, 500);
+      setTimeout(runAutoplay, 1500);
+      setTimeout(runAutoplay, 3000);
     };
 
     const handleFailed = () => {

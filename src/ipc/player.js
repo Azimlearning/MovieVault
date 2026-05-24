@@ -519,6 +519,47 @@ function register(getMainWindow, { writeSecretMigration }) {
       return null;
     }
   });
+
+  // Force autoplay by finding any video element in any subframe and calling play()
+  safeHandle("autoplay-video", async (_, webContentsId) => {
+    try {
+      const { webContents } = require("electron");
+      const wc = webContents.fromId(webContentsId);
+      if (!wc || wc.isDestroyed()) return false;
+
+      const allFrames = [];
+      const collect = (frame) => {
+        allFrames.push(frame);
+        for (const child of frame.frames || []) collect(child);
+      };
+      collect(wc.mainFrame);
+
+      const JS = `
+        (() => {
+          const v = document.querySelector('video');
+          if (v) {
+            v.muted = false;
+            const p = v.play();
+            if (p && typeof p.catch === 'function') {
+              p.catch(() => {});
+            }
+            return true;
+          }
+          return false;
+        })()
+      `;
+
+      for (const frame of allFrames) {
+        try {
+          const played = await frame.executeJavaScript(JS);
+          if (played) return true;
+        } catch {}
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  });
 }
 
 module.exports = { register };

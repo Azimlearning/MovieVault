@@ -5,9 +5,12 @@ const CACHE_PREFIX = "lastGoodSource_";
 export const sourceQueue = {
   getPriorityOrder() {
     const custom = storage.get("sourcePriority");
-    if (Array.isArray(custom) && custom.length > 0) return custom;
-    // Default priority order
-    return ["vidsrc", "videasy", "2embed"];
+    if (Array.isArray(custom) && custom.length > 0) {
+      const order = custom.filter((s) => s !== "videasy");
+      return ["videasy", ...order];
+    }
+    // Default priority order: videasy first
+    return ["videasy", "vidsrc", "2embed"];
   },
   
   savePriorityOrder(order) {
@@ -47,16 +50,11 @@ export const sourceQueue = {
 
   /**
    * Generates a queue of source IDs.
-   * Places the last successful source at the front if it's less than 24 hours old.
+   * Places videasy at the front always, followed by the remaining priority sources.
    */
   getQueue(tmdbId, season, episode) {
     const order = [...this.getPriorityOrder()];
-    const lastGood = this.getLastGoodSource(tmdbId, season, episode);
-    
-    if (lastGood && order.includes(lastGood)) {
-      const filtered = order.filter((s) => s !== lastGood);
-      return [lastGood, ...filtered];
-    }
-    return order;
+    const filtered = order.filter((s) => s !== "videasy");
+    return ["videasy", ...filtered];
   },
 };
