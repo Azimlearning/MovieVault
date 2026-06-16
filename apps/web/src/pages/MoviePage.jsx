@@ -34,8 +34,6 @@ import {
   DownloadIcon,
   WatchedIcon,
   TrailerIcon,
-  RatingShieldIcon,
-  RatingLockIcon,
   SourceIcon,
   ShieldBlockIcon,
   PopOutIcon,
@@ -52,6 +50,9 @@ import {
   getAgeLimitSetting,
   getRatingCountry,
 } from "../utils/ageRating";
+import CastRow from "../components/CastRow";
+import SimilarRow from "../components/SimilarRow";
+import RatingBadge from "../components/RatingBadge";
 
 export default function MoviePage({
   item,
@@ -129,6 +130,8 @@ export default function MoviePage({
     () => storage.get("downloaderFolder") || "",
   );
   const [rating, setRating] = useState({ cert: null, minAge: null });
+  const [synopsisExpanded, setSynopsisExpanded] = useState(false);
+  const [showDetailsPanel, setShowDetailsPanel] = useState(false);
 
   const progressKey = `movie_${item.id}`;
   const pct = progress[progressKey] || 0;
@@ -509,7 +512,7 @@ export default function MoviePage({
     let mounted = true;
     setDetailsLoading(true);
     setDetailsError(null);
-    tmdbFetch(`/movie/${item.id}`, apiKey)
+    tmdbFetch(`/movie/${item.id}?append_to_response=credits,similar,videos`, apiKey)
       .then((d) => {
         if (mounted) {
           setDetails(d);
@@ -1095,6 +1098,24 @@ export default function MoviePage({
       ? anilistData.genres.map((g, i) => ({ id: i, name: g }))
       : d.genres || [];
 
+  const castList = d.credits?.cast || [];
+  const similarList = (d.similar?.results || []).slice(0, 12);
+
+  const productionCompanies = (d.production_companies || [])
+    .map((c) => c.name)
+    .join(", ");
+  const productionCountries = (d.production_countries || [])
+    .map((c) => c.name)
+    .join(", ");
+  const budgetFormatted =
+    d.budget && d.budget > 0
+      ? "$" + (d.budget / 1_000_000).toFixed(1) + "M"
+      : null;
+  const revenueFormatted =
+    d.revenue && d.revenue > 0
+      ? "$" + (d.revenue / 1_000_000).toFixed(1) + "M"
+      : null;
+
   // Unreleased detection
   const isUnreleased = useMemo(() => {
     if (!d.release_date) return false;
@@ -1170,24 +1191,24 @@ export default function MoviePage({
                 <span>{d.original_language?.toUpperCase()}</span>
               )}
             </div>
-            {rating.cert && (
-              <div
-                className={`age-rating-pill${restricted ? " age-rating-pill--restricted" : ""}`}
-              >
-                {restricted ? (
-                  <RatingLockIcon size={13} />
-                ) : (
-                  <RatingShieldIcon size={13} />
-                )}
-                <span className="age-rating-pill-cert">{rating.cert}</span>
-                {restricted && (
-                  <span className="age-rating-pill-label">
-                    Inappropriate for your age setting
-                  </span>
+            <RatingBadge cert={rating.cert} restricted={restricted} />
+            {displayOverview && (
+              <div className="synopsis-wrap" style={{ marginBottom: 12 }}>
+                <p
+                  className={`detail-overview synopsis-text${synopsisExpanded ? "" : " synopsis-text--clamped"}`}
+                >
+                  {displayOverview}
+                </p>
+                {displayOverview.length > 200 && (
+                  <button
+                    className="synopsis-expand-btn"
+                    onClick={() => setSynopsisExpanded((e) => !e)}
+                  >
+                    {synopsisExpanded ? "Show less ▲" : "Read more ▼"}
+                  </button>
                 )}
               </div>
             )}
-            <p className="detail-overview">{displayOverview}</p>
             {!isWatched && displayPct > 0 && (
               <div className="progress-bar-row" style={{ marginBottom: 12 }}>
                 <div className="progress-bar-outer">
@@ -1750,6 +1771,66 @@ export default function MoviePage({
           tmdbId={item.id}
         />
       )}
+
+      {/* ── Cast row ── */}
+      {castList.length > 0 && (
+        <CastRow cast={castList} max={15} />
+      )}
+
+      {/* ── Production details (collapsible) ── */}
+      {(productionCompanies || productionCountries || budgetFormatted || revenueFormatted) && (
+        <div className="detail-extra-panel">
+          <button
+            className="detail-extra-toggle"
+            onClick={() => setShowDetailsPanel((p) => !p)}
+          >
+            {showDetailsPanel ? "▲" : "▼"} Production Details
+          </button>
+          {showDetailsPanel && (
+            <div className="detail-extra-content">
+              {productionCompanies && (
+                <div className="detail-extra-item">
+                  <span className="detail-extra-label">Production</span>
+                  <span className="detail-extra-value">{productionCompanies}</span>
+                </div>
+              )}
+              {productionCountries && (
+                <div className="detail-extra-item">
+                  <span className="detail-extra-label">Country</span>
+                  <span className="detail-extra-value">{productionCountries}</span>
+                </div>
+              )}
+              {budgetFormatted && (
+                <div className="detail-extra-item">
+                  <span className="detail-extra-label">Budget</span>
+                  <span className="detail-extra-value">{budgetFormatted}</span>
+                </div>
+              )}
+              {revenueFormatted && (
+                <div className="detail-extra-item">
+                  <span className="detail-extra-label">Box Office</span>
+                  <span className="detail-extra-value">{revenueFormatted}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Similar titles ── */}
+      {similarList.length > 0 && onSelect && (
+        <SimilarRow
+          items={similarList}
+          mediaType="movie"
+          onSelect={onSelect}
+          progress={progress}
+          watched={watched}
+          onMarkWatched={onMarkWatched}
+          onMarkUnwatched={onMarkUnwatched}
+          apiKey={apiKey}
+        />
+      )}
+
       </AsyncBoundary>
     </div>
   );

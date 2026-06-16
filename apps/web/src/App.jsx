@@ -1087,6 +1087,8 @@ export default function App() {
                 loading={loadingHome}
                 error={errorHome}
                 onSelect={handleSelectResult}
+                onSave={toggleSave}
+                saved={saved}
                 progress={progress}
                 inProgress={inProgress}
                 onRemoveFromContinue={removeFromContinueWatching}
@@ -1140,6 +1142,7 @@ export default function App() {
                 onMarkUnwatched={markUnwatched}
                 downloads={downloads}
                 onGoToDownloads={handleGoToDownloads}
+                onSelect={handleSelectResult}
               />
             )}
             {page === "history" && (

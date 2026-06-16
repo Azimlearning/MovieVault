@@ -41,12 +41,13 @@ import {
   DownloadIcon,
   WatchedIcon,
   TrailerIcon,
-  RatingShieldIcon,
-  RatingLockIcon,
   SourceIcon,
   ShieldBlockIcon,
   PopOutIcon,
 } from "../components/Icons";
+import CastRow from "../components/CastRow";
+import SimilarRow from "../components/SimilarRow";
+import RatingBadge from "../components/RatingBadge";
 import DownloadModal from "../components/DownloadModal";
 import TrailerModal from "../components/TrailerModal";
 import BlockedStatsModal from "../components/BlockedStatsModal";
@@ -365,6 +366,7 @@ export default function TVPage({
   onMarkUnwatched,
   downloads,
   onGoToDownloads,
+  onSelect,
 }) {
   const [details, setDetails] = useState(null);
   const [detailsError, setDetailsError] = useState(null);
@@ -413,6 +415,7 @@ export default function TVPage({
   const [webviewLoading, setWebviewLoading] = useState(false);
   const [playerFullscreen, setPlayerFullscreen] = useState(false);
   const [pipOpen, setPipOpen] = useState(false);
+  const [synopsisExpanded, setSynopsisExpanded] = useState(false);
   const pipUrlRef = useRef(null);
   const pipWebContentsIdRef = useRef(null); // cached WebContents ID of the pop-out window
   
@@ -684,6 +687,9 @@ export default function TVPage({
           : d.genres || [],
     [anilistLoading, isAnime, anilistData?.genres, d.genres],
   );
+
+  const castList = d.credits?.cast || [];
+  const similarList = (d.similar?.results || []).slice(0, 12);
 
   // ── Season watched helpers ─────────────────────────────────────────────────
   // Memoized map: seasonNum → "all" | "some" | "none"
@@ -1173,7 +1179,7 @@ export default function TVPage({
     let mounted = true;
     setLoading(true);
     setDetailsError(null);
-    tmdbFetch(`/tv/${item.id}`, apiKey)
+    tmdbFetch(`/tv/${item.id}?append_to_response=credits,similar`, apiKey)
       .then((d) => {
         if (!mounted) return;
         setDetails(d);
@@ -2176,24 +2182,24 @@ export default function TVPage({
                     </span>
                   )}
                 </div>
-                {rating.cert && (
-                  <div
-                    className={`age-rating-pill${restricted ? " age-rating-pill--restricted" : ""}`}
-                  >
-                    {restricted ? (
-                      <RatingLockIcon size={13} />
-                    ) : (
-                      <RatingShieldIcon size={13} />
-                    )}
-                    <span className="age-rating-pill-cert">{rating.cert}</span>
-                    {restricted && (
-                      <span className="age-rating-pill-label">
-                        Inappropriate for your age setting
-                      </span>
+                <RatingBadge cert={rating.cert} restricted={restricted} />
+                {displayOverview && (
+                  <div className="synopsis-wrap" style={{ marginBottom: 12 }}>
+                    <p
+                      className={`detail-overview synopsis-text${synopsisExpanded ? "" : " synopsis-text--clamped"}`}
+                    >
+                      {displayOverview}
+                    </p>
+                    {displayOverview.length > 200 && (
+                      <button
+                        className="synopsis-expand-btn"
+                        onClick={() => setSynopsisExpanded((e) => !e)}
+                      >
+                        {synopsisExpanded ? "Show less ▲" : "Read more ▼"}
+                      </button>
                     )}
                   </div>
                 )}
-                <p className="detail-overview">{displayOverview}</p>
                 <div className="detail-actions">
                   {trailerKey &&
                     (restricted ? (
@@ -3043,6 +3049,25 @@ export default function TVPage({
           episode={selectedEp?.episode_number}
           posterPath={d.poster_path}
           tmdbId={item.id}
+        />
+      )}
+
+      {/* ── Cast row ── */}
+      {castList.length > 0 && (
+        <CastRow cast={castList} max={15} />
+      )}
+
+      {/* ── Similar titles ── */}
+      {similarList.length > 0 && onSelect && (
+        <SimilarRow
+          items={similarList}
+          mediaType="tv"
+          onSelect={onSelect}
+          progress={progress}
+          watched={watched}
+          onMarkWatched={onMarkWatched}
+          onMarkUnwatched={onMarkUnwatched}
+          apiKey={apiKey}
         />
       )}
     </div>

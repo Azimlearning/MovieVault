@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import MediaCard from "../components/MediaCard";
 import TrendingCarousel from "../components/TrendingCarousel";
-import { PlayIcon, StarIcon } from "../components/Icons";
-import { imgUrl, tmdbFetch } from "../utils/api";
+import { tmdbFetch } from "../utils/api";
 import AsyncBoundary from "../components/AsyncBoundary";
+import HeroBanner from "../components/HeroBanner";
 import { useRatings, getRatingForItem } from "../utils/useRatings";
 import { isRestricted } from "../utils/ageRating";
 import { storage } from "../utils/storage";
@@ -39,6 +39,8 @@ export default function HomePage({
   loading,
   error,
   onSelect,
+  onSave,
+  saved,
   progress,
   inProgress,
   onRemoveFromContinue,
@@ -239,42 +241,16 @@ export default function HomePage({
   return (
     <div className="fade-in">
       <AsyncBoundary state={boundaryState} onRetry={onRetry}>
-        {/* ── Hero (always first) ── */}
-        {hero && (
-          <div className="hero">
-            <div
-              className="hero-bg"
-              style={{
-                backgroundImage: `url(${imgUrl(hero.backdrop_path, "original")})`,
-              }}
-            />
-            <div className="hero-gradient" />
-            <div className="hero-content">
-              <div className="hero-type">Trending · Movie</div>
-              <div className="hero-title">{hero.title || hero.name}</div>
-              <div className="hero-meta">
-                <span className="hero-rating">
-                  <StarIcon /> {hero.vote_average?.toFixed(1)}
-                </span>
-                <span>{hero.release_date?.slice(0, 4)}</span>
-              </div>
-              <div className="hero-overview">{hero.overview}</div>
-              <div className="hero-actions">
-                <button
-                  className="btn btn-primary"
-                  onClick={() => onSelect(hero)}
-                >
-                  <PlayIcon /> Watch Now
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => onSelect(hero)}
-                >
-                  More Info
-                </button>
-              </div>
-            </div>
-          </div>
+        {/* ── Hero Banner (always first) ── */}
+        {trending.length > 0 && (
+          <HeroBanner
+            trending={trending}
+            trendingTV={trendingTV}
+            apiKey={apiKey}
+            onSelect={onSelect}
+            onSave={onSave}
+            saved={saved}
+          />
         )}
 
       {/* ── Rows in user-configured order ── */}
