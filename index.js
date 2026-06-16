@@ -11,6 +11,7 @@ const {
   Notification,
 } = require("electron");
 const path = require("path");
+const fs = require("fs");
 
 // -- RAM / performance flags ---------------------------------------------------
 app.commandLine.appendSwitch(
@@ -44,6 +45,7 @@ const downloadsIpc = require("./src/ipc/downloads");
 const subtitlesIpc = require("./src/ipc/subtitles");
 const allmangaIpc = require("./src/ipc/allmanga");
 const playerIpc = require("./src/ipc/player");
+const onepaceIpc = require("./src/ipc/onepace");
 const { safeHandle } = require("./src/ipc/safeHandle");
 
 // -- Ad/tracker block list -----------------------------------------------------
@@ -276,6 +278,12 @@ function createWindow() {
     );
   });
 
+  const logFile = path.join(__dirname, "renderer-debug.log");
+  fs.writeFileSync(logFile, `=== Start Log: ${new Date().toISOString()} ===\n`);
+  mainWindow.webContents.on("console-message", (event, level, message, line, sourceId) => {
+    fs.appendFileSync(logFile, `[Renderer Console] LEVEL ${level}: ${message} (${path.basename(sourceId)}:${line})\n`);
+  });
+
   mainWindow.loadFile(path.join(__dirname, "dist/index.html"));
 
   // Trigger scheduled backup after load
@@ -322,6 +330,7 @@ subtitlesIpc.register({
   saveDownloads: downloadsIpc.saveDownloads,
 });
 allmangaIpc.register();
+onepaceIpc.register();
 playerIpc.register(getMainWindow, {
   writeSecretMigration: storageIpc.writeSecretMigration,
 });

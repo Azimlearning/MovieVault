@@ -8,6 +8,7 @@ import {
   memo,
 } from "react";
 import AsyncBoundary from "../components/AsyncBoundary";
+import TVDetailSkeleton from "../components/skeletons/TVDetailSkeleton";
 import { sourceQueue } from "../utils/sourceQueue";
 import {
   EPISODE_GROUP_IDS,
@@ -59,6 +60,9 @@ import {
   getAgeLimitSetting,
   getRatingCountry,
 } from "../utils/ageRating";
+import CastRow from "../components/CastRow";
+import SimilarRow from "../components/SimilarRow";
+import RatingBadge from "../components/RatingBadge";
 
 // ── Partial-circle progress icon (cached per pct tier) ───────────────────────
 // Uses a single SVG arc. Three instances (25/50/75)
@@ -360,14 +364,21 @@ export default function TVPage({
   onBack,
   onSettings,
   onDownloadStarted,
+  onSelect,
   watched,
   onMarkWatched,
   onMarkUnwatched,
   downloads,
   onGoToDownloads,
+  partySession,
+  onToggleWatchParty,
+  onPlayerStateUpdate,
+  onPlayerTitleChange,
 }) {
   const [details, setDetails] = useState(null);
   const [detailsError, setDetailsError] = useState(null);
+  const [synopsisExpanded, setSynopsisExpanded] = useState(false);
+  const [showDetailsPanel, setShowDetailsPanel] = useState(false);
   const [seasonError, setSeasonError] = useState(null);
   const [seasonData, setSeasonData] = useState(null);
   const [failedSeasons, setFailedSeasons] = useState(() => new Set()); // season numbers which give 404 on TMDB
@@ -685,6 +696,18 @@ export default function TVPage({
     [anilistLoading, isAnime, anilistData?.genres, d.genres],
   );
 
+  // Rich detail data from append_to_response
+  const castList = d.credits?.cast || [];
+  const similarList = (d.similar?.results || []).slice(0, 12);
+
+  // Production details
+  const productionCompanies = (d.production_companies || [])
+    .map((c) => c.name)
+    .join(", ");
+  const productionCountries = (d.production_countries || [])
+    .map((c) => c.name)
+    .join(", ");
+
   // ── Season watched helpers ─────────────────────────────────────────────────
   // Memoized map: seasonNum → "all" | "some" | "none"
   // Recomputed only when watched/seasons change, not on every render.
@@ -834,6 +857,20 @@ export default function TVPage({
     setResolvingUrl(false);
   }, []);
   saveProgressRef.current = saveProgress;
+
+  // Title change watch party scrobble/notify
+  useEffect(() => {
+    if (playing && selectedEp && playerEp.season != null && playerEp.episode != null) {
+      onPlayerTitleChange?.({
+        type: "tv",
+        tmdbId: item.id,
+        season: playerEp.season,
+        episode: playerEp.episode,
+        title: item.title || item.name,
+        embedUrl: getSourceUrl(playerSource, "tv", item.id, playerEp.season, playerEp.episode)
+      });
+    }
+  }, [playing, playerSource, item, playerEp, selectedEp, onPlayerTitleChange]);
 
   const showFeedback = useCallback((text) => {
     if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
@@ -1173,7 +1210,7 @@ export default function TVPage({
     let mounted = true;
     setLoading(true);
     setDetailsError(null);
-    tmdbFetch(`/tv/${item.id}`, apiKey)
+    tmdbFetch(`/tv/${item.id}?append_to_response=credits,similar`, apiKey)
       .then((d) => {
         if (!mounted) return;
         setDetails(d);
@@ -1494,6 +1531,19 @@ export default function TVPage({
     }
   }, [item.episode, currentSeasonEpisodes, selectedEp, playing, playEpisode]);
 
+  // Auto-play from HeroBanner "Play" button (playDirectly flag) — start S1E1
+  useEffect(() => {
+    if (!item.playDirectly || playing || selectedEp) return;
+    if (currentSeasonEpisodes.length === 0) return;
+    const ep = currentSeasonEpisodes[0];
+    if (ep) {
+      const t = setTimeout(() => playEpisode(ep), 200);
+      return () => clearTimeout(t);
+    }
+    // Only fires on initial mount or when item / episodes change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id, item.playDirectly, currentSeasonEpisodes]);
+
   // Show loader instantly when playback starts
   useEffect(() => {
     if (playing) setWebviewLoading(true);
@@ -1778,7 +1828,7 @@ export default function TVPage({
             result = await wv.executeJavaScript(`
               (() => {
                 const v = document.querySelector('video')
-                if (!v || !v.duration || v.duration === Infinity || v.paused) return null
+                if (!v || !v.duration || v.duration === Infinity) return null
                 // Re-attach seek tracker if video element was recreated (e.g. quality change)
                 if (!v._seekTracked) {
                   v._seekTracked = true
@@ -1790,6 +1840,7 @@ export default function TVPage({
                 return {
                   currentTime: v.currentTime,
                   duration: v.duration,
+                  paused: v.paused,
                   recentUserSeek: v._lastUserSeek ? (Date.now() - v._lastUserSeek < 6000) : false,
                   lastUserSeekTo: v._lastUserSeekTo ?? null,
                 }
@@ -1895,6 +1946,9 @@ export default function TVPage({
               source: playerSource,
               episodeTitle: selectedEp?.name
             });
+            if (onPlayerStateUpdate) {
+              onPlayerStateUpdate(ct, !result.paused);
+            }
             // Also persist actual seconds so DownloadsPage can show resume position
             storage.set("dlTime_" + currentProgressKey, Math.floor(ct));
 
@@ -2134,7 +2188,7 @@ export default function TVPage({
 
   return (
     <div className="fade-in">
-      <AsyncBoundary state={detailState} onRetry={fetchDetails}>
+      <AsyncBoundary state={detailState} onRetry={fetchDetails} loadingComponent={<TVDetailSkeleton />}>
         <div className="detail-hero">
             <div
               className="detail-bg"
@@ -2167,9 +2221,20 @@ export default function TVPage({
                 <div className="detail-title">{title}</div>
                 <div className="genres">
                   {displayGenres.map((g) => (
-                    <span key={g.id} className="genre-tag">
+                    <button
+                      key={g.id}
+                      className="genre-tag"
+                      onClick={() => {
+                        window.dispatchEvent(
+                          new CustomEvent("movievault:open-search-genre", {
+                            detail: { genreId: String(g.id) },
+                          })
+                        );
+                      }}
+                      style={{ cursor: "pointer" }}
+                    >
                       {g.name}
-                    </span>
+                    </button>
                   ))}
                 </div>
                 <div className="detail-meta">
@@ -2192,24 +2257,25 @@ export default function TVPage({
                     </span>
                   )}
                 </div>
-                {rating.cert && (
-                  <div
-                    className={`age-rating-pill${restricted ? " age-rating-pill--restricted" : ""}`}
-                  >
-                    {restricted ? (
-                      <RatingLockIcon size={13} />
-                    ) : (
-                      <RatingShieldIcon size={13} />
-                    )}
-                    <span className="age-rating-pill-cert">{rating.cert}</span>
-                    {restricted && (
-                      <span className="age-rating-pill-label">
-                        Inappropriate for your age setting
-                      </span>
+                <RatingBadge cert={rating.cert} restricted={restricted} />
+                {/* Synopsis expander */}
+                {displayOverview && (
+                  <div className="synopsis-wrap" style={{ marginBottom: 12 }}>
+                    <p
+                      className={`detail-overview synopsis-text${synopsisExpanded ? "" : " synopsis-text--clamped"}`}
+                    >
+                      {displayOverview}
+                    </p>
+                    {displayOverview.length > 200 && (
+                      <button
+                        className="synopsis-expand-btn"
+                        onClick={() => setSynopsisExpanded((e) => !e)}
+                      >
+                        {synopsisExpanded ? "Show less ▲" : "Read more ▼"}
+                      </button>
                     )}
                   </div>
                 )}
-                <p className="detail-overview">{displayOverview}</p>
                 <div className="detail-actions">
                   {trailerKey &&
                     (restricted ? (
@@ -2278,6 +2344,32 @@ export default function TVPage({
                 className={`player-wrap${playerFullscreen ? " player-wrap--fullscreen" : ""}`}
                 ref={playerWrapRef}
               >
+                {/* Watch Party Sync Offset Indicator */}
+                {partySession && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 16,
+                      right: 16,
+                      zIndex: 99,
+                      background: "rgba(0,0,0,0.8)",
+                      backdropFilter: "blur(6px)",
+                      borderRadius: 16,
+                      padding: "4px 10px",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: "#fff",
+                      pointerEvents: "none",
+                      border: "1px solid rgba(255,255,255,0.15)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4
+                    }}
+                  >
+                    <span style={{ color: "var(--red)" }}>●</span>
+                    <span>Party Sync: +{storage.get("partySyncOffset") ?? 1.5}s</span>
+                  </div>
+                )}
                 {/* Universal source-loading overlay, shown instantly on every source/episode switch */}
                 {webviewLoading && !resolveError && (
                   <div
@@ -2585,6 +2677,18 @@ export default function TVPage({
                     style={pipOpen ? { color: "var(--red)" } : undefined}
                   >
                     <PopOutIcon />
+                  </button>
+                  {/* Watch Party button */}
+                  <button
+                    className="player-overlay-btn"
+                    onClick={onToggleWatchParty}
+                    title={partySession ? "Watch Party active" : "Start Watch Party"}
+                    style={partySession ? { color: "var(--red)" } : undefined}
+                  >
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                      <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
+                    </svg>
+                    {partySession ? `Party (${partySession.guests.length})` : "Party"}
                   </button>
                 </div>
                 {showSourceMenu && menuPos && (
@@ -2996,6 +3100,54 @@ export default function TVPage({
               )}
             </AsyncBoundary>
           </div>
+
+          {/* ── Cast row ── */}
+          {castList.length > 0 && (
+            <CastRow cast={castList} max={15} />
+          )}
+
+          {/* ── Production details (collapsible) ── */}
+          {(productionCompanies || productionCountries) && (
+            <div className="detail-extra-panel">
+              <button
+                className="detail-extra-toggle"
+                onClick={() => setShowDetailsPanel((p) => !p)}
+              >
+                {showDetailsPanel ? "▲" : "▼"} Production Details
+              </button>
+              {showDetailsPanel && (
+                <div className="detail-extra-content">
+                  {productionCompanies && (
+                    <div className="detail-extra-item">
+                      <span className="detail-extra-label">Production</span>
+                      <span className="detail-extra-value">{productionCompanies}</span>
+                    </div>
+                  )}
+                  {productionCountries && (
+                    <div className="detail-extra-item">
+                      <span className="detail-extra-label">Country</span>
+                      <span className="detail-extra-value">{productionCountries}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Similar titles ── */}
+          {similarList.length > 0 && onSelect && (
+            <SimilarRow
+              items={similarList}
+              mediaType="tv"
+              onSelect={onSelect}
+              progress={progress}
+              watched={watched}
+              onMarkWatched={onMarkWatched}
+              onMarkUnwatched={onMarkUnwatched}
+              apiKey={apiKey}
+            />
+          )}
+
       </AsyncBoundary>
 
       {showTrailer && trailerKey && (

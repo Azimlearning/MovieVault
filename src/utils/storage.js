@@ -85,6 +85,10 @@ export const STORAGE_KEYS = {
   EPISODE_RELEASE_CACHE: "episodeReleaseCache",
   // Auto-next episode (Netflix-style countdown)
   AUTO_NEXT_EPISODE: "autoNextEpisode",
+  AUTOPLAY_TRAILERS: "autoplayTrailers",
+  SHOW_ONE_PACE: "showOnePace",
+  SYNC_ONE_PACE_ANILIST: "syncOnePaceAnilist",
+  PARTY_SYNC_OFFSET: "partySyncOffset",
 };
 
 export const getApiKey = () => storage.get(STORAGE_KEYS.API_KEY);
