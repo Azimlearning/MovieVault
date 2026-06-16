@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>MovieVault Player</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      outline: none;
+    }
+  </style>
+</head>
+<body>
+  <video id="v" autoplay controls playsinline></video>
+
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
+  <script>
+    (function() {
+      const video = document.getElementById('v');
+      const params = new URLSearchParams(window.location.search);
+      const rawUrl = params.get('url');
+      const referer = params.get('referer') || 'https://allmanga.to';
+      const startTime = parseFloat(params.get('startTime') || '0');
+
+      if (!rawUrl) {
+        console.error("Player: No url parameter specified");
+        return;
+      }
+
+      const isM3u8 = rawUrl.includes(".m3u8");
+
+      if (isM3u8 && Hls.isSupported()) {
+        // Rewrite all manifest and fragment request URLs to route through /api/proxy
+        class ProxyLoader extends Hls.DefaultConfig.loader {
+          constructor(config) {
+            super(config);
+            const origLoad = this.load.bind(this);
+            this.load = function(context, config, callbacks) {
+              if (context.url && !context.url.startsWith('/') && !context.url.startsWith(window.location.origin)) {
+                context.url = window.location.origin + '/api/proxy?url=' + encodeURIComponent(context.url) + '&referer=' + encodeURIComponent(referer);
+              }
+              origLoad(context, config, callbacks);
+            };
+          }
+        }
+
+        const hls = new Hls({
+          loader: ProxyLoader,
+          maxMaxBufferLength: 30, // moderate buffer size for mobile compatibility
+        });
+
+        // Initialize first playlist fetch via proxy
+        const startPlaylistUrl = window.location.origin + '/api/proxy?url=' + encodeURIComponent(rawUrl) + '&referer=' + encodeURIComponent(referer);
+        hls.loadSource(startPlaylistUrl);
+        hls.attachMedia(video);
+
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          if (startTime > 0) {
+            video.currentTime = startTime;
+          }
+          video.play().catch(function(err) {
+            console.debug("Autoplay blocked, waiting for user click:", err);
+          });
+        });
+
+        // Expose hls on window for debugging or teardown
+        window.__hls = hls;
+      } else {
+        // Fallback for native HLS (e.g. iOS Safari) or direct mp4/webm/mkv streams
+        const proxySrc = window.location.origin + '/api/proxy?url=' + encodeURIComponent(rawUrl) + '&referer=' + encodeURIComponent(referer);
+        video.src = proxySrc;
+
+        if (startTime > 0) {
+          video.addEventListener('loadedmetadata', function() {
+            video.currentTime = startTime;
+          }, { once: true });
+        }
+
+        video.play().catch(function(err) {
+          console.debug("Autoplay blocked, waiting for user click:", err);
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
