@@ -8,6 +8,7 @@ import {
   useMemo,
 } from "react";
 import AsyncBoundary from "../components/AsyncBoundary";
+import MovieDetailSkeleton from "../components/skeletons/MovieDetailSkeleton";
 import { sourceQueue } from "../utils/sourceQueue";
 import {
   tmdbFetch,
@@ -52,6 +53,9 @@ import {
   getAgeLimitSetting,
   getRatingCountry,
 } from "../utils/ageRating";
+import CastRow from "../components/CastRow";
+import SimilarRow from "../components/SimilarRow";
+import RatingBadge from "../components/RatingBadge";
 
 export default function MoviePage({
   item,
@@ -64,12 +68,16 @@ export default function MoviePage({
   onBack,
   onSettings,
   onDownloadStarted,
+  onSelect,
   watched,
   onMarkWatched,
   onMarkUnwatched,
   downloads,
   onGoToDownloads,
-  onSelect,
+  partySession,
+  onToggleWatchParty,
+  onPlayerStateUpdate,
+  onPlayerTitleChange,
 }) {
   const [details, setDetails] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
@@ -124,6 +132,9 @@ export default function MoviePage({
   const [subtitleOffset, setSubtitleOffset] = useState(0);
   const [feedbackText, setFeedbackText] = useState(null);
   const feedbackTimerRef = useRef(null);
+  const [synopsisExpanded, setSynopsisExpanded] = useState(false);
+  const [showDetailsPanel, setShowDetailsPanel] = useState(false);
+
 
   const [downloaderFolder, setDownloaderFolder] = useState(
     () => storage.get("downloaderFolder") || "",
@@ -139,6 +150,15 @@ export default function MoviePage({
   const title = d.title || d.name;
   const year = (d.release_date || "").slice(0, 4);
   const mediaName = `${title}${year ? " (" + year + ")" : ""}`;
+
+  // Blocked request stats
+  const {
+    sessionTotal: blockedSession,
+    alltimeTotal: blockedAlltime,
+    showModal: showBlockedModal,
+    setShowModal: setShowBlockedModal,
+    getSessionDomains: getBlockedDomains,
+  } = useBlockedStats(item.id);
 
   const isAnime = useMemo(
     () => isAnimeContent(item, details),
@@ -509,7 +529,10 @@ export default function MoviePage({
     let mounted = true;
     setDetailsLoading(true);
     setDetailsError(null);
-    tmdbFetch(`/movie/${item.id}`, apiKey)
+    tmdbFetch(
+      `/movie/${item.id}?append_to_response=credits,similar,videos`,
+      apiKey,
+    )
       .then((d) => {
         if (mounted) {
           setDetails(d);
@@ -535,6 +558,17 @@ export default function MoviePage({
   useEffect(() => {
     fetchDetails();
   }, [fetchDetails]);
+
+  // Auto-play when navigated here with playDirectly flag (e.g. from HeroBanner "Play" button)
+  useEffect(() => {
+    if (item.playDirectly && !playing) {
+      // Small delay so the page renders first, then start play
+      const t = setTimeout(() => handlePlay(), 200);
+      return () => clearTimeout(t);
+    }
+    // Only run on mount / when item changes — intentionally omit handlePlay
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id, item.playDirectly]);
 
   useEffect(() => {
     let mounted = true;
@@ -936,7 +970,7 @@ export default function MoviePage({
             result = await wv.executeJavaScript(`
               (() => {
                 const v = document.querySelector('video')
-                if (!v || !v.duration || v.duration === Infinity || v.paused) return null
+                if (!v || !v.duration || v.duration === Infinity) return null
                 // Re-attach seek tracker if video element was recreated (e.g. quality change)
                 if (!v._seekTracked) {
                   v._seekTracked = true
@@ -948,6 +982,7 @@ export default function MoviePage({
                 return {
                   currentTime: v.currentTime,
                   duration: v.duration,
+                  paused: v.paused,
                   recentUserSeek: v._lastUserSeek ? (Date.now() - v._lastUserSeek < 6000) : false,
                   lastUserSeekTo: v._lastUserSeekTo ?? null,
                 }
@@ -1018,6 +1053,9 @@ export default function MoviePage({
               duration: result.duration,
               source: playerSource
             });
+            if (onPlayerStateUpdate) {
+              onPlayerStateUpdate(ct, !result.paused);
+            }
             // Also persist actual seconds so DownloadsPage can show resume position
             storage.set("dlTime_" + progressKey, Math.floor(ct));
 
@@ -1047,6 +1085,18 @@ export default function MoviePage({
     setPlaying(true);
     onHistory({ ...d, media_type: "movie" });
   }, [d, onHistory]);
+
+  // Title change watch party scrobble/notify
+  useEffect(() => {
+    if (playing) {
+      onPlayerTitleChange?.({
+        type: "movie",
+        tmdbId: item.id,
+        title: item.title || item.name,
+        embedUrl: getSourceUrl(playerSource, "movie", item.id, null, null)
+      });
+    }
+  }, [playing, playerSource, item, onPlayerTitleChange]);
 
   // Intercept fullscreen requests from embedded players (vidsrc / 2embed use
   // the native Fullscreen API which would otherwise fullscreen the entire app).
@@ -1110,6 +1160,26 @@ export default function MoviePage({
       ? anilistData.genres.map((g, i) => ({ id: i, name: g }))
       : d.genres || [];
 
+  // Rich detail data from append_to_response
+  const castList = d.credits?.cast || [];
+  const similarList = (d.similar?.results || []).slice(0, 12);
+
+  // Production details
+  const productionCompanies = (d.production_companies || [])
+    .map((c) => c.name)
+    .join(", ");
+  const productionCountries = (d.production_countries || [])
+    .map((c) => c.name)
+    .join(", ");
+  const budgetFormatted =
+    d.budget && d.budget > 0
+      ? "$" + (d.budget / 1_000_000).toFixed(1) + "M"
+      : null;
+  const revenueFormatted =
+    d.revenue && d.revenue > 0
+      ? "$" + (d.revenue / 1_000_000).toFixed(1) + "M"
+      : null;
+
   // Unreleased detection
   const isUnreleased = useMemo(() => {
     if (!d.release_date) return false;
@@ -1130,7 +1200,7 @@ export default function MoviePage({
 
   return (
     <div className="fade-in">
-      <AsyncBoundary state={detailState} onRetry={fetchDetails}>
+      <AsyncBoundary state={detailState} onRetry={fetchDetails} loadingComponent={<MovieDetailSkeleton />}>
         <div className="detail-hero">
         <div
           className="detail-bg"
@@ -1168,9 +1238,20 @@ export default function MoviePage({
             <div className="detail-title">{title}</div>
             <div className="genres">
               {displayGenres.map((g) => (
-                <span key={g.id} className="genre-tag">
+                <button
+                  key={g.id}
+                  className="genre-tag"
+                  onClick={() => {
+                    window.dispatchEvent(
+                      new CustomEvent("movievault:open-search-genre", {
+                        detail: { genreId: String(g.id) },
+                      })
+                    );
+                  }}
+                  style={{ cursor: "pointer" }}
+                >
                   {g.name}
-                </span>
+                </button>
               ))}
             </div>
             <div className="detail-meta">
@@ -1185,24 +1266,25 @@ export default function MoviePage({
                 <span>{d.original_language?.toUpperCase()}</span>
               )}
             </div>
-            {rating.cert && (
-              <div
-                className={`age-rating-pill${restricted ? " age-rating-pill--restricted" : ""}`}
-              >
-                {restricted ? (
-                  <RatingLockIcon size={13} />
-                ) : (
-                  <RatingShieldIcon size={13} />
-                )}
-                <span className="age-rating-pill-cert">{rating.cert}</span>
-                {restricted && (
-                  <span className="age-rating-pill-label">
-                    Inappropriate for your age setting
-                  </span>
+            <RatingBadge cert={rating.cert} restricted={restricted} />
+            {/* Synopsis expander */}
+            {displayOverview && (
+              <div className="synopsis-wrap" style={{ marginBottom: 12 }}>
+                <p
+                  className={`detail-overview synopsis-text${synopsisExpanded ? "" : " synopsis-text--clamped"}`}
+                >
+                  {displayOverview}
+                </p>
+                {displayOverview.length > 200 && (
+                  <button
+                    className="synopsis-expand-btn"
+                    onClick={() => setSynopsisExpanded((e) => !e)}
+                  >
+                    {synopsisExpanded ? "Show less ▲" : "Read more ▼"}
+                  </button>
                 )}
               </div>
             )}
-            <p className="detail-overview">{displayOverview}</p>
             {!isWatched && displayPct > 0 && (
               <div className="progress-bar-row" style={{ marginBottom: 12 }}>
                 <div className="progress-bar-outer">
@@ -1303,6 +1385,32 @@ export default function MoviePage({
             className={`player-wrap${playerFullscreen ? " player-wrap--fullscreen" : ""}`}
             ref={playerWrapRef}
           >
+            {/* Watch Party Sync Offset Indicator */}
+            {partySession && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: 16,
+                  right: 16,
+                  zIndex: 99,
+                  background: "rgba(0,0,0,0.8)",
+                  backdropFilter: "blur(6px)",
+                  borderRadius: 16,
+                  padding: "4px 10px",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "#fff",
+                  pointerEvents: "none",
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4
+                }}
+              >
+                <span style={{ color: "var(--red)" }}>●</span>
+                <span>Party Sync: +{storage.get("partySyncOffset") ?? 1.5}s</span>
+              </div>
+            )}
             {/* Universal source-loading overlay, shown instantly on every source/item switch */}
             {webviewLoading && !resolveError && (
               <div
@@ -1585,6 +1693,18 @@ export default function MoviePage({
               >
                 <PopOutIcon />
               </button>
+              {/* Watch Party button */}
+              <button
+                className="player-overlay-btn"
+                onClick={onToggleWatchParty}
+                title={partySession ? "Watch Party active" : "Start Watch Party"}
+                style={partySession ? { color: "var(--red)" } : undefined}
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                  <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
+                </svg>
+                {partySession ? `Party (${partySession.guests.length})` : "Party"}
+              </button>
             </div>
             {showSourceMenu && menuPos && (
               <div
@@ -1729,6 +1849,7 @@ export default function MoviePage({
                   watched={watched}
                   onMarkWatched={onMarkWatched}
                   onMarkUnwatched={onMarkUnwatched}
+                  apiKey={apiKey}
                 />
               );
             })}
@@ -1769,6 +1890,66 @@ export default function MoviePage({
           tmdbId={item.id}
         />
       )}
+
+      {/* ── Cast row ── */}
+      {castList.length > 0 && (
+        <CastRow cast={castList} max={15} />
+      )}
+
+      {/* ── Production details (collapsible) ── */}
+      {(productionCompanies || productionCountries || budgetFormatted || revenueFormatted) && (
+        <div className="detail-extra-panel">
+          <button
+            className="detail-extra-toggle"
+            onClick={() => setShowDetailsPanel((p) => !p)}
+          >
+            {showDetailsPanel ? "▲" : "▼"} Production Details
+          </button>
+          {showDetailsPanel && (
+            <div className="detail-extra-content">
+              {productionCompanies && (
+                <div className="detail-extra-item">
+                  <span className="detail-extra-label">Production</span>
+                  <span className="detail-extra-value">{productionCompanies}</span>
+                </div>
+              )}
+              {productionCountries && (
+                <div className="detail-extra-item">
+                  <span className="detail-extra-label">Country</span>
+                  <span className="detail-extra-value">{productionCountries}</span>
+                </div>
+              )}
+              {budgetFormatted && (
+                <div className="detail-extra-item">
+                  <span className="detail-extra-label">Budget</span>
+                  <span className="detail-extra-value">{budgetFormatted}</span>
+                </div>
+              )}
+              {revenueFormatted && (
+                <div className="detail-extra-item">
+                  <span className="detail-extra-label">Box Office</span>
+                  <span className="detail-extra-value">{revenueFormatted}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Similar titles ── */}
+      {similarList.length > 0 && onSelect && (
+        <SimilarRow
+          items={similarList}
+          mediaType="movie"
+          onSelect={onSelect}
+          progress={progress}
+          watched={watched}
+          onMarkWatched={onMarkWatched}
+          onMarkUnwatched={onMarkUnwatched}
+          apiKey={apiKey}
+        />
+      )}
+
       </AsyncBoundary>
     </div>
   );
@@ -1785,6 +1966,7 @@ const CollectionCard = memo(function CollectionCard({
   watched,
   onMarkWatched,
   onMarkUnwatched,
+  apiKey,
 }) {
   const handleClick = useCallback(() => onSelect(part), [onSelect, part]);
   return (
@@ -1801,6 +1983,7 @@ const CollectionCard = memo(function CollectionCard({
         watched={watched}
         onMarkWatched={onMarkWatched}
         onMarkUnwatched={onMarkUnwatched}
+        apiKey={apiKey}
       />
     </div>
   );

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { tmdbFetch, imgUrl } from "../utils/api";
 import { SearchIcon, CloseIcon } from "./Icons";
+import Skeleton from "./Skeleton";
 import { storage } from "../utils/storage";
 
 const HISTORY_KEY = "searchHistory";
@@ -58,16 +59,16 @@ function fuzzyMatch(text, query) {
   return false;
 }
 
-export default function SearchModal({ apiKey, onSelect, onClose, offline }) {
+export default function SearchModal({ apiKey, onSelect, onClose, offline, initialGenre }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState(loadHistory);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(!!initialGenre);
   const [trending, setTrending] = useState([]);
 
   // Search filters
-  const [selectedGenre, setSelectedGenre] = useState("");
+  const [selectedGenre, setSelectedGenre] = useState(initialGenre || "");
   const [selectedYear, setSelectedYear] = useState("");
   const [selectedLang, setSelectedLang] = useState("");
   const [selectedRating, setSelectedRating] = useState("");
@@ -397,8 +398,17 @@ export default function SearchModal({ apiKey, onSelect, onClose, offline }) {
           )}
 
           {!offline && loading && (
-            <div className="loader">
-              <div className="spinner" />
+            <div className="search-results-skeleton-container" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="search-result skeleton-search-placeholder" style={{ pointerEvents: "none" }}>
+                  <Skeleton width="40px" height="58px" style={{ borderRadius: 5 }} />
+                  <div className="search-result-info">
+                    <Skeleton variant="text" width="160px" height="15px" style={{ marginBottom: 6 }} />
+                    <Skeleton variant="text" width="80px" height="12px" />
+                  </div>
+                  <Skeleton width="50px" height="18px" style={{ borderRadius: 3 }} />
+                </div>
+              ))}
             </div>
           )}
 

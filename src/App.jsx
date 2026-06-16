@@ -16,12 +16,15 @@ import { collectBackupData } from "./utils/backup";
 import { tmdbFetch, setApiErrorHandlers, isAnimeContent, fetchAnilistData } from "./utils/api";
 import { scrobbleTrakt, scrobbleAnilist } from "./utils/oauth";
 import { clearAppCaches } from "./utils/storage";
+import { PARTY_HTTP, PARTY_WS } from "./utils/partyConfig";
 
 import Sidebar from "./components/Sidebar";
 import SearchModal from "./components/SearchModal";
 import SetupScreen from "./components/SetupScreen";
 import CloseConfirmModal from "./components/CloseConfirmModal";
 import UpdateModal from "./components/UpdateModal";
+import WatchPartyHostModal from "./components/WatchPartyHostModal";
+import WatchPartyIndicator from "./components/WatchPartyIndicator";
 
 // Lazy-loaded pages: each chunk is only downloaded when the user first visits
 const HomePage = lazy(() => import("./pages/HomePage"));
@@ -30,6 +33,9 @@ const TVPage = lazy(() => import("./pages/TVPage"));
 const LibraryPage = lazy(() => import("./pages/LibraryPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const DownloadsPage = lazy(() => import("./pages/DownloadsPage"));
+const OnePacePage = lazy(() => import("./pages/OnePacePage"));
+const OnePaceArcPage = lazy(() => import("./pages/OnePaceArcPage"));
+const OnePacePlayer = lazy(() => import("./components/OnePacePlayer"));
 import { checkForUpdates } from "./utils/updates";
 
 const handleIntegrationsSync = (entry, pct) => {
@@ -100,6 +106,7 @@ export default function App() {
   const [page, setPage] = useState(() => storage.get("startPage") || "home");
   const [selected, setSelected] = useState(null);
   const [showSearch, setShowSearch] = useState(false);
+  const [searchGenre, setSearchGenre] = useState("");
   const [dlSearchOpen, setDlSearchOpen] = useState(false);
   const [librarySort, setLibrarySort] = useState(
     () => storage.get(STORAGE_KEYS.LIBRARY_SORT) || "manual",
@@ -109,6 +116,7 @@ export default function App() {
 
   // Navigation history stack for Ctrl+Z back navigation
   const [navStack, setNavStack] = useState([]);
+  const [navDirection, setNavDirection] = useState("forward");
 
   const [saved, setSaved] = useState(() => storage.get("saved") || {});
   // Separate order array for drag-and-drop reordering
@@ -120,6 +128,12 @@ export default function App() {
   const [watched, setWatched] = useState(() => storage.get("watched") || {});
   const [watchHistory, setWatchHistory] = useState(() => storage.get("watchHistory") || {});
   const [toast, setToast] = useState(null);
+  const toastTimerRef = useRef(null);
+  const showToast = useCallback((msg) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast(msg);
+    toastTimerRef.current = setTimeout(() => setToast(null), 2500);
+  }, []);
   const [updateBanner, setUpdateBanner] = useState(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   // null | "checking" | { entries: object[] } | "none"
@@ -131,6 +145,46 @@ export default function App() {
   const [loadingHome, setLoadingHome] = useState(false);
   const [errorHome, setErrorHome] = useState(null);
   const [offline, setOffline] = useState(() => !navigator.onLine);
+
+  // One Pace
+  const [showOnePace, setShowOnePace] = useState(
+    () => storage.get(STORAGE_KEYS.SHOW_ONE_PACE) !== false,
+  );
+  const [onePaceArcs, setOnePaceArcs] = useState([]);
+  const [loadingOnePace, setLoadingOnePace] = useState(false);
+
+  // Watch Party
+  const [partySession, setPartySession] = useState(null);
+  const [showPartyModal, setShowPartyModal] = useState(false);
+  const wsRef = useRef(null);
+  const currentTitleRef = useRef(null);
+  const playingStateRef = useRef(false);
+  const playheadRef = useRef(0);
+  const lastSentPlayingRef = useRef(null);
+  const lastSentTimeRef = useRef(0);
+  const lastHeartbeatRef = useRef(0);
+
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setShowOnePace(storage.get(STORAGE_KEYS.SHOW_ONE_PACE) !== false);
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
+
+  useEffect(() => {
+    if (page === "onepace" && onePaceArcs.length === 0) {
+      setLoadingOnePace(true);
+      window.electron.listOnePaceArcs()
+        .then((res) => {
+          if (res?.arcs) {
+            setOnePaceArcs(res.arcs);
+          }
+        })
+        .catch((err) => console.error("Failed to list One Pace arcs:", err))
+        .finally(() => setLoadingOnePace(false));
+    }
+  }, [page, onePaceArcs]);
 
   // ── Network offline detection ──────────────────────────────────────────────
   useEffect(() => {
@@ -628,6 +682,150 @@ export default function App() {
     };
   }, []);
 
+  const handleStartWatchParty = useCallback(async () => {
+    try {
+      const res = await fetch(`${PARTY_HTTP}/session`, { method: "POST" });
+      if (!res.ok) throw new Error("Failed to create session on relay server");
+
+      const data = await res.json(); // { sessionId, sessionCode, hostToken }
+
+      const ws = new WebSocket(`${PARTY_WS}/session/${data.sessionId}?token=${data.hostToken}`);
+
+      ws.onopen = () => {
+        console.log("[WatchParty] Connected as Host");
+        setPartySession({
+          sessionId: data.sessionId,
+          sessionCode: data.sessionCode,
+          hostToken: data.hostToken,
+          guests: []
+        });
+        setShowPartyModal(true);
+        wsRef.current = ws;
+
+        if (currentTitleRef.current) {
+          ws.send(JSON.stringify({
+            type: "HOST_TITLE_CHANGE",
+            title: currentTitleRef.current
+          }));
+        }
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "GUEST_LIST_UPDATE") {
+            setPartySession(prev => prev ? { ...prev, guests: msg.guests || [] } : null);
+          } else if (msg.type === "GUEST_CHAT") {
+            showToast(`💬 ${msg.displayName}: ${msg.message}`);
+          } else if (msg.type === "GUEST_REACT") {
+            showToast(`${msg.displayName} reacted: ${msg.emoji}`);
+          } else if (msg.type === "GUEST_HAND_RAISE") {
+            showToast(`✋ ${msg.displayName} raised their hand!`);
+          }
+        } catch (e) {
+          console.error("Watch Party msg error:", e);
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.error("Watch Party socket error:", err);
+        showToast("Watch Party connection error");
+      };
+
+      ws.onclose = () => {
+        setPartySession(null);
+        wsRef.current = null;
+        showToast("Watch Party disconnected");
+      };
+    } catch (e) {
+      console.error(e);
+      showToast(e.message || "Failed to start watch party");
+    }
+  }, [showToast]);
+
+  const handleEndWatchParty = useCallback(() => {
+    if (wsRef.current) wsRef.current.close();
+    setPartySession(null);
+    setShowPartyModal(false);
+  }, []);
+
+  const handleKickGuest = useCallback((displayName) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: "HOST_KICK",
+        displayName
+      }));
+    }
+  }, []);
+
+  const handleToggleWatchParty = useCallback(() => {
+    if (!partySession) {
+      handleStartWatchParty();
+    } else {
+      setShowPartyModal(v => !v);
+    }
+  }, [partySession, handleStartWatchParty]);
+
+  const onPlayerStateUpdate = useCallback((time, playing) => {
+    playheadRef.current = time;
+    playingStateRef.current = playing;
+
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+    const syncOffset = storage.get(STORAGE_KEYS.PARTY_SYNC_OFFSET) ?? 1.5;
+    const timeToSend = time + (playing ? syncOffset : 0);
+
+    const now = Date.now();
+    const lastSentPlaying = lastSentPlayingRef.current;
+    const lastSentTime = lastSentTimeRef.current;
+    const lastHeartbeatTime = lastHeartbeatRef.current || 0;
+
+    let shouldSend = false;
+    let eventType = "HOST_HEARTBEAT";
+
+    if (playing !== lastSentPlaying) {
+      shouldSend = true;
+      eventType = playing ? "HOST_PLAY" : "HOST_PAUSE";
+    } else if (Math.abs(time - lastSentTime) > 3) {
+      shouldSend = true;
+      eventType = "HOST_SEEK";
+    } else if (now - lastHeartbeatTime > 30000) {
+      shouldSend = true;
+      eventType = "HOST_HEARTBEAT";
+    }
+
+    if (shouldSend) {
+      wsRef.current.send(JSON.stringify({
+        type: eventType,
+        time: timeToSend,
+        playing,
+        ts: now
+      }));
+      lastSentPlayingRef.current = playing;
+      lastSentTimeRef.current = time;
+      lastHeartbeatRef.current = now;
+    }
+  }, []);
+
+  const onPlayerTitleChange = useCallback((titleInfo) => {
+    currentTitleRef.current = titleInfo;
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: "HOST_TITLE_CHANGE",
+        title: titleInfo
+      }));
+    }
+    lastSentPlayingRef.current = null;
+    lastSentTimeRef.current = 0;
+    lastHeartbeatRef.current = 0;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) wsRef.current.close();
+    };
+  }, []);
+
   // ── Navigation ────────────────────────────────────────────────────────────
   // Refs so navigate/navigateBack never need page/selected as deps
   const pageRef = useRef(page);
@@ -640,19 +838,27 @@ export default function App() {
   }, [selected]);
 
   const navigateBack = useCallback(() => {
+    setNavDirection("back");
     setNavStack((prev) => {
       if (prev.length === 0) return prev;
       const last = prev[prev.length - 1];
       setPage(last.page);
       setSelected(last.selected);
+
+      // Clear playing title if navigating away from players
+      if (last.page !== "movie" && last.page !== "tv" && last.page !== "onepace-player") {
+        onPlayerTitleChange(null);
+      }
+
       if (typeof gc === "function") {
         requestIdleCallback(() => gc(), { timeout: 2000 });
       }
       return prev.slice(0, -1);
     });
-  }, []);
+  }, [onPlayerTitleChange]);
 
   const navigate = useCallback((pg, data = null) => {
+    setNavDirection("forward");
     setNavStack((prev) => [
       ...prev,
       { page: pageRef.current, selected: selectedRef.current },
@@ -660,11 +866,17 @@ export default function App() {
     setSelected(data);
     setPage(pg);
     setShowSearch(false);
+
+    // Clear playing title if navigating away from players
+    if (pg !== "movie" && pg !== "tv" && pg !== "onepace-player") {
+      onPlayerTitleChange(null);
+    }
+
     // After navigating away, the previous page's component unmounts
     if (typeof gc === "function") {
       requestIdleCallback(() => gc(), { timeout: 2000 });
     }
-  }, []);
+  }, [onPlayerTitleChange]);
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
@@ -721,17 +933,23 @@ export default function App() {
   // ── Custom event bindings for webview keyboard shortcuts bypass ───────────
   useEffect(() => {
     const handleOpenSearch = () => setShowSearch(true);
+    const handleOpenSearchGenre = (e) => {
+      setSearchGenre(e.detail?.genreId || "");
+      setShowSearch(true);
+    };
     const handleOpenSettings = () => navigate("settings");
     const handleOpenLibrary = () => navigate("history");
     const handleOpenHome = () => navigate("home");
 
     window.addEventListener("movievault:open-search", handleOpenSearch);
+    window.addEventListener("movievault:open-search-genre", handleOpenSearchGenre);
     window.addEventListener("movievault:open-settings", handleOpenSettings);
     window.addEventListener("movievault:open-library", handleOpenLibrary);
     window.addEventListener("movievault:open-home", handleOpenHome);
 
     return () => {
       window.removeEventListener("movievault:open-search", handleOpenSearch);
+      window.removeEventListener("movievault:open-search-genre", handleOpenSearchGenre);
       window.removeEventListener("movievault:open-settings", handleOpenSettings);
       window.removeEventListener("movievault:open-library", handleOpenLibrary);
       window.removeEventListener("movievault:open-home", handleOpenHome);
@@ -739,12 +957,6 @@ export default function App() {
   }, [navigate]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-  const toastTimerRef = useRef(null);
-  const showToast = useCallback((msg) => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setToast(msg);
-    toastTimerRef.current = setTimeout(() => setToast(null), 2500);
-  }, []);
 
   const getMediaType = useCallback(
     (item) => item.media_type || (item.first_air_date ? "tv" : "movie"),
@@ -1029,6 +1241,7 @@ export default function App() {
           canGoBack={navStack.length > 0}
           onBack={navigateBack}
           onShowShortcuts={() => setShowShortcuts(true)}
+          showOnePace={showOnePace}
         />
 
         <div className="main">
@@ -1080,113 +1293,163 @@ export default function App() {
               </div>
             }
           >
-            {page === "home" && (
-              <HomePage
-                trending={trending}
-                trendingTV={trendingTV}
-                loading={loadingHome}
-                error={errorHome}
-                onSelect={handleSelectResult}
-                progress={progress}
-                inProgress={inProgress}
-                onRemoveFromContinue={removeFromContinueWatching}
-                offline={offline}
-                onRetry={retryHome}
-                watched={watched}
-                onMarkWatched={markWatched}
-                onMarkUnwatched={markUnwatched}
-                history={history}
-                apiKey={apiKey}
-              />
-            )}
-            {page === "movie" && selected && (
-              <MoviePage
-                item={selected}
-                apiKey={apiKey}
-                onSave={() => toggleSave(selected)}
-                isSaved={isSaved(selected)}
-                onHistory={addHistory}
-                progress={progress}
-                saveProgress={saveProgress}
-                onBack={() => navigate("home")}
-                onSettings={(section) =>
-                  navigate("settings", { section: section || null })
-                }
-                onDownloadStarted={handleDownloadStarted}
-                watched={watched}
-                onMarkWatched={markWatched}
-                onMarkUnwatched={markUnwatched}
-                downloads={downloads}
-                onGoToDownloads={handleGoToDownloads}
-                onSelect={handleSelectResult}
-              />
-            )}
-            {page === "tv" && selected && (
-              <TVPage
-                item={selected}
-                apiKey={apiKey}
-                onSave={() => toggleSave(selected)}
-                isSaved={isSaved(selected)}
-                onHistory={addHistory}
-                progress={progress}
-                saveProgress={saveProgress}
-                onBack={() => navigate("home")}
-                onSettings={(section) =>
-                  navigate("settings", { section: section || null })
-                }
-                onDownloadStarted={handleDownloadStarted}
-                watched={watched}
-                onMarkWatched={markWatched}
-                onMarkUnwatched={markUnwatched}
-                downloads={downloads}
-                onGoToDownloads={handleGoToDownloads}
-              />
-            )}
-            {page === "history" && (
-              <LibraryPage
-                history={history}
-                inProgress={inProgress}
-                saved={savedList}
-                progress={progress}
-                onSelect={handleSelectResult}
-                watched={watched}
-                onMarkWatched={markWatched}
-                onMarkUnwatched={markUnwatched}
-                watchHistory={watchHistory}
-              />
-            )}
-            {page === "settings" && (
-              <SettingsPage
-                apiKey={apiKey}
-                onChangeApiKey={changeApiKey}
-                initialSection={selected?.section}
-              />
-            )}
-            {page === "downloads" && (
-              <DownloadsPage
-                downloads={downloads}
-                onDeleteDownload={handleDeleteDownload}
-                onHistory={addHistory}
-                onSaveProgress={saveProgress}
-                progress={progress}
-                watched={watched}
-                onMarkWatched={markWatched}
-                onMarkUnwatched={markUnwatched}
-                highlightId={highlightDownload}
-                onClearHighlight={() => setHighlightDownload(null)}
-                onSelect={handleSelectResult}
-                searchOpen={dlSearchOpen}
-                onSearchClose={() => setDlSearchOpen(false)}
-                onSettings={(section) =>
-                  navigate("settings", { section: section || null })
-                }
-                onUpdateDownload={(id, updates) =>
-                  setDownloads((prev) =>
-                    prev.map((d) => (d.id === id ? { ...d, ...updates } : d)),
-                  )
-                }
-              />
-            )}
+            <div
+              key={page}
+              className={
+                navDirection === "forward"
+                  ? "page-transition-forward"
+                  : "page-transition-back"
+              }
+            >
+              {page === "home" && (
+                <HomePage
+                  trending={trending}
+                  trendingTV={trendingTV}
+                  loading={loadingHome}
+                  error={errorHome}
+                  onSelect={handleSelectResult}
+                  progress={progress}
+                  inProgress={inProgress}
+                  onRemoveFromContinue={removeFromContinueWatching}
+                  offline={offline}
+                  onRetry={retryHome}
+                  watched={watched}
+                  onMarkWatched={markWatched}
+                  onMarkUnwatched={markUnwatched}
+                  history={history}
+                  apiKey={apiKey}
+                  onSave={toggleSave}
+                  saved={saved}
+                />
+              )}
+              {page === "movie" && selected && (
+                <MoviePage
+                  item={selected}
+                  apiKey={apiKey}
+                  onSave={() => toggleSave(selected)}
+                  isSaved={isSaved(selected)}
+                  onHistory={addHistory}
+                  progress={progress}
+                  saveProgress={saveProgress}
+                  onBack={() => navigate("home")}
+                  onSettings={(section) =>
+                    navigate("settings", { section: section || null })
+                  }
+                  onDownloadStarted={handleDownloadStarted}
+                  watched={watched}
+                  onMarkWatched={markWatched}
+                  onMarkUnwatched={markUnwatched}
+                  downloads={downloads}
+                  onGoToDownloads={handleGoToDownloads}
+                  onSelect={handleSelectResult}
+                  partySession={partySession}
+                  onToggleWatchParty={handleToggleWatchParty}
+                  onPlayerStateUpdate={onPlayerStateUpdate}
+                  onPlayerTitleChange={onPlayerTitleChange}
+                />
+              )}
+              {page === "tv" && selected && (
+                <TVPage
+                  item={selected}
+                  apiKey={apiKey}
+                  onSave={() => toggleSave(selected)}
+                  isSaved={isSaved(selected)}
+                  onHistory={addHistory}
+                  progress={progress}
+                  saveProgress={saveProgress}
+                  onBack={() => navigate("home")}
+                  onSettings={(section) =>
+                    navigate("settings", { section: section || null })
+                  }
+                  onDownloadStarted={handleDownloadStarted}
+                  watched={watched}
+                  onMarkWatched={markWatched}
+                  onMarkUnwatched={markUnwatched}
+                  downloads={downloads}
+                  onGoToDownloads={handleGoToDownloads}
+                  onSelect={handleSelectResult}
+                  partySession={partySession}
+                  onToggleWatchParty={handleToggleWatchParty}
+                  onPlayerStateUpdate={onPlayerStateUpdate}
+                  onPlayerTitleChange={onPlayerTitleChange}
+                />
+              )}
+              {page === "history" && (
+                <LibraryPage
+                  history={history}
+                  inProgress={inProgress}
+                  saved={savedList}
+                  progress={progress}
+                  onSelect={handleSelectResult}
+                  watched={watched}
+                  onMarkWatched={markWatched}
+                  onMarkUnwatched={markUnwatched}
+                  watchHistory={watchHistory}
+                  apiKey={apiKey}
+                />
+              )}
+              {page === "settings" && (
+                <SettingsPage
+                  apiKey={apiKey}
+                  onChangeApiKey={changeApiKey}
+                  initialSection={selected?.section}
+                />
+              )}
+              {page === "downloads" && (
+                <DownloadsPage
+                  downloads={downloads}
+                  onDeleteDownload={handleDeleteDownload}
+                  onHistory={addHistory}
+                  onSaveProgress={saveProgress}
+                  progress={progress}
+                  watched={watched}
+                  onMarkWatched={markWatched}
+                  onMarkUnwatched={markUnwatched}
+                  highlightId={highlightDownload}
+                  onClearHighlight={() => setHighlightDownload(null)}
+                  onSelect={handleSelectResult}
+                  searchOpen={dlSearchOpen}
+                  onSearchClose={() => setDlSearchOpen(false)}
+                  onSettings={(section) =>
+                    navigate("settings", { section: section || null })
+                  }
+                  onUpdateDownload={(id, updates) =>
+                    setDownloads((prev) =>
+                      prev.map((d) => (d.id === id ? { ...d, ...updates } : d)),
+                    )
+                  }
+                />
+              )}
+              {page === "onepace" && (
+                <OnePacePage
+                  arcs={onePaceArcs}
+                  progress={progress}
+                  onSelectArc={(arc) => navigate("onepace-arc", arc)}
+                />
+              )}
+              {page === "onepace-arc" && selected && (
+                <OnePaceArcPage
+                  arcHeader={selected}
+                  progress={progress}
+                  onBack={() => navigate("onepace")}
+                  onPlayEpisode={(arc, ep) => navigate("onepace-player", { arc, ep })}
+                />
+              )}
+              {page === "onepace-player" && selected && (
+                <OnePacePlayer
+                  arc={selected.arc}
+                  episode={selected.ep}
+                  progress={progress}
+                  saveProgress={saveProgress}
+                  onBack={() => navigate("onepace-arc", selected.arc)}
+                  onPlayEpisode={(arc, ep) => navigate("onepace-player", { arc, ep })}
+                  partySession={partySession}
+                  onToggleWatchParty={handleToggleWatchParty}
+                  onPlayerStateUpdate={onPlayerStateUpdate}
+                  onPlayerTitleChange={onPlayerTitleChange}
+                />
+              )}
+            </div>
           </Suspense>
         </div>
 
@@ -1194,8 +1457,12 @@ export default function App() {
           <SearchModal
             apiKey={apiKey}
             onSelect={handleSelectResult}
-            onClose={() => setShowSearch(false)}
+            onClose={() => {
+              setShowSearch(false);
+              setSearchGenre("");
+            }}
             offline={offline}
+            initialGenre={searchGenre}
           />
         )}
         {updateBanner && (
@@ -1461,6 +1728,32 @@ export default function App() {
         )}
         {showShortcuts && (
           <KeyboardShortcutsModal onClose={() => setShowShortcuts(false)} />
+        )}
+
+        {/* Watch Party Modals and Indicator */}
+        {partySession && (
+          <div style={{
+            position: "fixed",
+            top: hasCustomTitlebar ? 42 : 12,
+            right: 20,
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center"
+          }}>
+            <WatchPartyIndicator
+              session={partySession}
+              onClick={() => setShowPartyModal(true)}
+            />
+          </div>
+        )}
+
+        {showPartyModal && partySession && (
+          <WatchPartyHostModal
+            session={partySession}
+            onEndParty={handleEndWatchParty}
+            onClose={() => setShowPartyModal(false)}
+            onKickGuest={handleKickGuest}
+          />
         )}
       </div>
     </ErrorBoundary>

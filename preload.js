@@ -63,6 +63,11 @@ contextBridge.exposeInMainWorld("electron", {
   setPlayerVideo: (args) => ipcRenderer.invoke("set-player-video", args).then((r) => r.ok ? { ok: true, ...r.data } : { ok: false, error: r.error?.message }),
   debugAllManga: (args) => ipcRenderer.invoke("debug-allmanga", args).then((r) => r.ok ? r.data : null),
 
+  // One Pace
+  listOnePaceArcs: () => ipcRenderer.invoke("list-onepace-arcs").then((r) => r.ok ? r.data : { arcs: [] }),
+  getOnePaceArc: (arcId) => ipcRenderer.invoke("get-onepace-arc", arcId).then((r) => r.ok ? r.data : null),
+  refreshOnePace: () => ipcRenderer.invoke("refresh-onepace").then((r) => r.ok ? r.data : null),
+
   // App version (from package.json via Electron)
   getAppVersion: () => ipcRenderer.invoke("get-app-version").then((r) => r.ok ? r.data : ""),
 

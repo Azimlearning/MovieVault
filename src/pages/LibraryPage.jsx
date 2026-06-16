@@ -6,6 +6,7 @@ import { useRatings, getRatingForItem } from "../utils/useRatings";
 import { isRestricted } from "../utils/ageRating";
 import { storage, STORAGE_KEYS } from "../utils/storage";
 import AsyncBoundary from "../components/AsyncBoundary";
+import CardGridSkeleton from "../components/skeletons/CardGridSkeleton";
 
 const GENRE_MAP = {
   28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy", 80: "Crime",
@@ -25,7 +26,8 @@ export default function LibraryPage({
   watched,
   onMarkWatched,
   onMarkUnwatched,
-  watchHistory = {}
+  watchHistory = {},
+  apiKey
 }) {
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -481,7 +483,7 @@ export default function LibraryPage({
           </div>
         </div>
       ) : (
-        <AsyncBoundary state={libraryState} emptyComponent={emptyComponent}>
+        <AsyncBoundary state={libraryState} emptyComponent={emptyComponent} loadingComponent={<CardGridSkeleton />}>
           <div className="cards-grid" style={{ marginTop: 8 }}>
             {sortedItems.map((item) => {
               const pk =
@@ -501,6 +503,7 @@ export default function LibraryPage({
                   onMarkUnwatched={onMarkUnwatched}
                   ageRating={r.cert}
                   restricted={restr}
+                  apiKey={apiKey}
                 />
               );
             })}

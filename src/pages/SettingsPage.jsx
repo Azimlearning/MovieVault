@@ -3082,11 +3082,25 @@ export default function SettingsPage({
   const [defaultSubtitleOffset, setDefaultSubtitleOffset] = useState(
     () => storage.get(STORAGE_KEYS.DEFAULT_SUBTITLE_OFFSET) ?? 0,
   );
+  const [partySyncOffset, setPartySyncOffset] = useState(
+    () => storage.get(STORAGE_KEYS.PARTY_SYNC_OFFSET) ?? 1.5,
+  );
   const [autoNextEpisode, setAutoNextEpisode] = useState(
     () => storage.get(STORAGE_KEYS.AUTO_NEXT_EPISODE) !== false,
   );
   const [discordRpcEnabled, setDiscordRpcEnabled] = useState(
     () => storage.get("discordRpcEnabled") !== false
+  );
+  const [showOnePace, setShowOnePaceState] = useState(
+    () => storage.get(STORAGE_KEYS.SHOW_ONE_PACE) !== false,
+  );
+  const [syncOnePaceAnilist, setSyncOnePaceAnilist] = useState(
+    () => storage.get(STORAGE_KEYS.SYNC_ONE_PACE_ANILIST) === true,
+  );
+  const [refreshingOnePace, setRefreshingOnePace] = useState(false);
+  const [refreshOnePaceResult, setRefreshOnePaceResult] = useState(null);
+  const [autoplayTrailers, setAutoplayTrailers] = useState(
+    () => storage.get(STORAGE_KEYS.AUTOPLAY_TRAILERS) !== false,
   );
   const [traktUser, setTraktUser] = useState(
     () => storage.get("traktToken")?.username || ""
@@ -3355,6 +3369,13 @@ export default function SettingsPage({
     flash();
   };
 
+  const handleSavePartySyncOffset = () => {
+    const val = Math.max(0.0, Math.min(10.0, parseFloat(partySyncOffset) || 0));
+    setPartySyncOffset(val);
+    storage.set(STORAGE_KEYS.PARTY_SYNC_OFFSET, val);
+    flash();
+  };
+
   const flash = () => {
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -3609,6 +3630,101 @@ export default function SettingsPage({
                   </span>
                 )}
               </div>
+              </div>
+            </div>
+
+          <Divider />
+
+          {/* One Pace Integration */}
+          <div style={{ marginBottom: 40 }}>
+            <div className="settings-section-title">One Pace Integration</div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--text3)",
+                marginBottom: 16,
+                lineHeight: 1.6,
+              }}
+            >
+              Configure One Pace (One Piece fan recut) settings. Enable to show "One Pace" in your sidebar, browse arcs, and stream episodes directly via Pixeldrain with Canvas subtitle rendering.
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <button
+                  onClick={() => {
+                    const next = !showOnePace;
+                    setShowOnePaceState(next);
+                    storage.set(STORAGE_KEYS.SHOW_ONE_PACE, next);
+                    window.dispatchEvent(new Event("storage"));
+                  }}
+                  title={showOnePace ? "Hide One Pace" : "Show One Pace"}
+                  style={{
+                    width: 44,
+                    height: 24,
+                    borderRadius: 12,
+                    border: "1px solid var(--border)",
+                    cursor: "pointer",
+                    background: showOnePace ? "var(--red)" : "var(--surface2)",
+                    position: "relative",
+                    transition: "background 0.2s",
+                    flexShrink: 0,
+                    outline: "none",
+                  }}
+                >
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: 3,
+                      left: showOnePace ? 22 : 3,
+                      width: 16,
+                      height: 16,
+                      borderRadius: "50%",
+                      background: "#fff",
+                      transition: "left 0.2s",
+                    }}
+                  />
+                </button>
+                <span style={{ fontSize: 14, color: "var(--text2)" }}>
+                  Show One Pace in sidebar ({showOnePace ? "Enabled" : "Disabled"})
+                </span>
+              </div>
+
+              <div>
+                <button
+                  className="btn btn-secondary"
+                  disabled={refreshingOnePace}
+                  onClick={async () => {
+                    setRefreshingOnePace(true);
+                    setRefreshOnePaceResult(null);
+                    try {
+                      const res = await window.electron.refreshOnePace();
+                      if (res?.ok) {
+                        setRefreshOnePaceResult({ ok: true, msg: `✓ Successfully refreshed catalog (${res.count || 0} arcs)` });
+                      } else {
+                        setRefreshOnePaceResult({ ok: false, msg: `⚠ Refresh failed: ${res?.error || "Unknown error"}` });
+                      }
+                    } catch (e) {
+                      setRefreshOnePaceResult({ ok: false, msg: `⚠ Refresh failed: ${e.message}` });
+                    } finally {
+                      setRefreshingOnePace(false);
+                    }
+                  }}
+                  style={{ padding: "6px 12px" }}
+                >
+                  {refreshingOnePace ? "Refreshing..." : "Refresh One Pace catalog"}
+                </button>
+                {refreshOnePaceResult && (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: refreshOnePaceResult.ok ? "#48c774" : "var(--red)",
+                      marginTop: 8,
+                    }}
+                  >
+                    {refreshOnePaceResult.msg}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -3819,6 +3935,103 @@ export default function SettingsPage({
               </button>
               <span style={{ fontSize: 14, color: "var(--text2)" }}>
                 {autoNextEpisode ? "Enabled" : "Disabled"}
+              </span>
+            </div>
+          </div>
+
+          <Divider />
+
+          {/* Watch Party Sync Offset */}
+          <div style={{ marginBottom: 40 }}>
+            <div className="settings-section-title">Watch Party Sync Delay</div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--text3)",
+                marginBottom: 16,
+                lineHeight: 1.6,
+              }}
+            >
+              Configure the delay (seconds) added to the host's playback sync so guests have time to catch up over high-latency networks. Defaults to 1.5 seconds.
+            </div>
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0.0"
+                  max="10.0"
+                  className="apikey-input"
+                  style={{ width: 100, marginBottom: 0 }}
+                  value={partySyncOffset}
+                  onChange={(e) => setPartySyncOffset(e.target.value)}
+                />
+                <span style={{ fontSize: 14, color: "var(--text2)" }}>
+                  seconds
+                </span>
+              </div>
+              <button className="btn btn-primary" onClick={handleSavePartySyncOffset}>
+                Save
+              </button>
+            </div>
+          </div>
+
+          {/* Autoplay Trailers on Banner */}
+          <div style={{ marginBottom: 32 }}>
+            <div className="settings-section-title">Autoplay Trailers on Banner</div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--text3)",
+                marginBottom: 16,
+                lineHeight: 1.6,
+              }}
+            >
+              When enabled, hovering over the home page hero banner (or keeping it in view) for 2 seconds automatically fetches and autoplays the trailer muted.
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <button
+                onClick={() => {
+                  const next = !autoplayTrailers;
+                  setAutoplayTrailers(next);
+                  storage.set(STORAGE_KEYS.AUTOPLAY_TRAILERS, next);
+                }}
+                title={autoplayTrailers ? "Disable autoplay" : "Enable autoplay"}
+                style={{
+                  width: 44,
+                  height: 24,
+                  borderRadius: 12,
+                  border: "1px solid var(--border)",
+                  cursor: "pointer",
+                  background: autoplayTrailers ? "var(--red)" : "var(--surface2)",
+                  position: "relative",
+                  transition: "background 0.2s",
+                  flexShrink: 0,
+                  outline: "none",
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    top: 3,
+                    left: autoplayTrailers ? 22 : 3,
+                    width: 16,
+                    height: 16,
+                    borderRadius: "50%",
+                    background: "#fff",
+                    transition: "left 0.2s",
+                  }}
+                />
+              </button>
+              <span style={{ fontSize: 14, color: "var(--text2)" }}>
+                {autoplayTrailers ? "Enabled" : "Disabled"}
               </span>
             </div>
           </div>
@@ -4265,6 +4478,24 @@ export default function SettingsPage({
                     />
                   </div>
                 </details>
+              </div>
+            )}
+            {anilistUser && (
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
+                <input
+                  type="checkbox"
+                  id="syncOnePaceAnilistToggle"
+                  checked={syncOnePaceAnilist}
+                  onChange={(e) => {
+                    const val = e.target.checked;
+                    setSyncOnePaceAnilist(val);
+                    storage.set(STORAGE_KEYS.SYNC_ONE_PACE_ANILIST, val);
+                  }}
+                  style={{ width: 18, height: 18, cursor: "pointer" }}
+                />
+                <label htmlFor="syncOnePaceAnilistToggle" style={{ fontSize: 14, color: "var(--text2)", cursor: "pointer" }}>
+                  Sync One Pace progress to One Piece on AniList
+                </label>
               </div>
             )}
           </div>

@@ -11,6 +11,7 @@ import {
   QuitIcon,
   BackIcon,
   HelpIcon,
+  StrawHatIcon,
 } from "./Icons";
 
 export default function Sidebar({
@@ -24,6 +25,7 @@ export default function Sidebar({
   canGoBack,
   onBack,
   onShowShortcuts,
+  showOnePace,
 }) {
   const [dragOver, setDragOver] = useState(null);
   const dragItem = useRef(null);
@@ -132,6 +134,14 @@ export default function Sidebar({
         label="Downloads"
         badge={activeDownloads > 0 ? activeDownloads : null}
       />
+      {showOnePace !== false && (
+        <SideBtn
+          active={page === "onepace" || page === "onepace-arc"}
+          onClick={() => onNavigate("onepace")}
+          icon={<StrawHatIcon />}
+          label="One Pace"
+        />
+      )}
 
       <div className="sidebar-sep" />
 

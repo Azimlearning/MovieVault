@@ -1,0 +1,15 @@
+{
+  "name": "party-relay",
+  "version": "1.0.0",
+  "description": "Watch Party WebSocket Relay Server for MovieVault",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}
