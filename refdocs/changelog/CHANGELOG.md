@@ -17,9 +17,9 @@
 ## [Unreleased]
 
 ### 2026-06-17 — Fix serverless functions crashing (ESM vs CommonJS) — proxy + AllManga
-- **Changed:** Renamed `apps/web/api/proxy.js` → `proxy.cjs` and `apps/web/api/resolve-allmanga.js` → `resolve-allmanga.cjs`.
-- **Decided:** Verified against the live deployment that BOTH serverless functions return 500 `FUNCTION_INVOCATION_FAILED` with runtime log `ReferenceError: require is not defined`. Cause: `apps/web/package.json` has `"type": "module"`, so Vercel treats `.js` function files as ESM, where `require`/`module.exports` don't exist. The `.cjs` extension forces CommonJS regardless of package type, the lowest-risk fix (no logic rewrite). Vercel still routes `/api/proxy` and `/api/resolve-allmanga` by basename. This means AllManga (anime) playback on the web app was also broken and is fixed by the same change.
-- **Deviations:** Chose `.cjs` rename over converting both files to ESM `import`/`export default` — smaller diff, no risk to the working logic.
+- **Changed:** Converted `apps/web/api/proxy.js` and `apps/web/api/resolve-allmanga.js` from CommonJS (`require`/`module.exports`) to ESM (`import`/`export default`).
+- **Decided:** Verified against the live deployment that BOTH serverless functions returned 500 `FUNCTION_INVOCATION_FAILED` with runtime log `ReferenceError: require is not defined`. Cause: `apps/web/package.json` has `"type": "module"`, so Vercel treats `.js` function files as ESM, where `require`/`module.exports` don't exist. **First attempt** renamed them to `.cjs` — but that made Vercel's Vite preset stop detecting them as functions entirely (deploy showed no `lambdaRuntimeStats`; `/api/proxy` returned 404). Vercel only auto-detects `.js`/`.ts`/`.mjs` in `api/` for this project, so the correct fix is to keep `.js` and convert the source to ESM. Fixes both the One Pace Pixeldrain proxy and AllManga (anime) resolution — AllManga playback on web was broken by the same root cause.
+- **Deviations:** Reverted the `.cjs` rename after confirming via deploy metadata that those files weren't being built as functions.
 - **Known issues / next steps:** Re-verify on deploy: `/api/proxy` should return 206 for the One Pace Pixeldrain URL, unblocking One Pace playback end-to-end.
 
 ### 2026-06-17 — Fix One Pace streaming via serverless proxy (Pixeldrain embed block)

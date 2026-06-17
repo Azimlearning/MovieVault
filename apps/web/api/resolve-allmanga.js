@@ -1,6 +1,6 @@
-const https = require("https");
-const http = require("http");
-const crypto = require("crypto");
+import https from "https";
+import http from "http";
+import crypto from "crypto";
 
 // ── AllAnime hex cipher (from ani-cli) ──
 const ALLANIME_HEX_MAP = {
@@ -326,7 +326,7 @@ async function resolveEpisodeFromId(showId, epStr, dubSub) {
   return trySourceUrls(sourceUrls);
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   // CORS setup
   res.setHeader("Access-Control-Allow-Credentials", true);
   res.setHeader("Access-Control-Allow-Origin", "*");
