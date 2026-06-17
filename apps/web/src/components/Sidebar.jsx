@@ -11,6 +11,7 @@ import {
   QuitIcon,
   BackIcon,
   HelpIcon,
+  StrawHatIcon,
 } from "./Icons";
 
 export default function Sidebar({
@@ -131,6 +132,12 @@ export default function Sidebar({
         icon={<DownloadsQueueIcon />}
         label="Downloads"
         badge={activeDownloads > 0 ? activeDownloads : null}
+      />
+      <SideBtn
+        active={page === "onepace" || page === "onepaceArc" || page === "onepacePlayer"}
+        onClick={() => onNavigate("onepace")}
+        icon={<StrawHatIcon />}
+        label="One Pace"
       />
 
       <div className="sidebar-sep" />

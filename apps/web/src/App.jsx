@@ -30,6 +30,9 @@ const TVPage = lazy(() => import("./pages/TVPage"));
 const LibraryPage = lazy(() => import("./pages/LibraryPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const DownloadsPage = lazy(() => import("./pages/DownloadsPage"));
+const OnePacePage = lazy(() => import("./pages/OnePacePage"));
+const OnePaceArcPage = lazy(() => import("./pages/OnePaceArcPage"));
+const OnePacePlayer = lazy(() => import("./components/OnePacePlayer"));
 import { checkForUpdates } from "./utils/updates";
 
 const handleIntegrationsSync = (entry, pct) => {
@@ -1188,6 +1191,30 @@ export default function App() {
                     prev.map((d) => (d.id === id ? { ...d, ...updates } : d)),
                   )
                 }
+              />
+            )}
+            {page === "onepace" && (
+              <OnePacePage
+                progress={progress}
+                onSelectArc={(arc) => navigate("onepaceArc", arc)}
+              />
+            )}
+            {page === "onepaceArc" && selected && (
+              <OnePaceArcPage
+                arcHeader={selected}
+                progress={progress}
+                onBack={navigateBack}
+                onPlayEpisode={(arc, ep) => navigate("onepacePlayer", { arc, episode: ep })}
+              />
+            )}
+            {page === "onepacePlayer" && selected?.arc && (
+              <OnePacePlayer
+                arc={selected.arc}
+                episode={selected.episode}
+                progress={progress}
+                saveProgress={saveProgress}
+                onBack={navigateBack}
+                onPlayEpisode={(arc, ep) => navigate("onepacePlayer", { arc, episode: ep })}
               />
             )}
           </Suspense>
