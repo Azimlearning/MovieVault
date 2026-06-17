@@ -135,8 +135,11 @@ export default function MoviePage({
 
   const progressKey = `movie_${item.id}`;
   const {
+    sessionTotal: blockedSession,
+    alltimeTotal: blockedAlltime,
     showModal: showBlockedModal,
     setShowModal: setShowBlockedModal,
+    getSessionDomains: getBlockedDomains,
   } = useBlockedStats(item.id);
   const pct = progress[progressKey] || 0;
   const isWatched = !!watched?.[progressKey];

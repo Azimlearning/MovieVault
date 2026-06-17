@@ -16,6 +16,18 @@
 
 ## [Unreleased]
 
+### 2026-06-17 — Fix MoviePage crash: blockedSession/blockedAlltime/getBlockedDomains undefined
+- **Changed:** `apps/web/src/pages/MoviePage.jsx` — expanded the `useBlockedStats(item.id)` destructure to also map `sessionTotal: blockedSession`, `alltimeTotal: blockedAlltime`, and `getSessionDomains: getBlockedDomains`.
+- **Decided:** The earlier `showBlockedModal` fix only pulled `showModal`/`setShowModal` from the hook, but MoviePage also references `blockedSession` (player ad-block badge), `blockedAlltime`, and `getBlockedDomains()` (BlockedStatsModal props) — so the page crashed with `blockedSession is not defined`. Now mirrors TVPage's complete destructure of all five hook returns.
+- **Deviations:** None — completes the incomplete prior fix.
+- **Known issues / next steps:** None for this crash.
+
+### 2026-06-17 — Plan full UI redesign (V3) for the Electron app
+- **Changed:** No code changes. Created `refdocs/plans/PLAN_UI_REDESIGN_V3.md` and `refdocs/execution/EXEC_UI_REDESIGN_V3.md`; updated `refdocs/plans/README.md` and `refdocs/execution/README.md` index tables.
+- **Decided:** Scoped a full visual redesign of `src/` (Electron app only — `apps/web/src/` deferred). Direction locked via user Q&A: new color palette (moving away from the literal Netflix red/black currently in `global.css`), Bento-style modular card grid (replacing the dense uniform grid), Netflix's hero-banner/row-density kept as structural inspiration only, typography (Bebas Neue + DM Sans) unchanged. New app icon will be a fresh mark drawn in the existing `Icons.jsx` line-art SVG style, replacing `public/icon.png`, `public/sized/*`, and the leftover "Streambert"-branded `public/logo.svg`/`StreambertLogo` component. `IMPROVEMENT_PLAN_V2.md` is fully shipped (P4+P5+P6) and is not superseded — V3 is a standalone follow-on plan.
+- **Deviations:** `IMPROVEMENT_PLAN_V2.md` §4.3 assumed `framer-motion` was already a dependency; confirmed during planning that it is **not** in `package.json` and is unused in `src/` — the codebase uses hand-written CSS transitions only. V3's animation approach (plain CSS, no new dependency) was set accordingly; corrected the execution-plan status table (V2 was previously marked "P6 undeployed" — user confirmed it's all shipped).
+- **Known issues / next steps:** Plan has 4 open questions (exact palette hex values, icon production method, Bento sizing rule, web-app follow-up timing) to resolve in Execution Phase 0 before any component code is touched. No implementation has started yet.
+
 ### 2026-06-17 — Fix serverless functions crashing (ESM vs CommonJS) — proxy + AllManga
 - **Changed:** Converted `apps/web/api/proxy.js` and `apps/web/api/resolve-allmanga.js` from CommonJS (`require`/`module.exports`) to ESM (`import`/`export default`).
 - **Decided:** Verified against the live deployment that BOTH serverless functions returned 500 `FUNCTION_INVOCATION_FAILED` with runtime log `ReferenceError: require is not defined`. Cause: `apps/web/package.json` has `"type": "module"`, so Vercel treats `.js` function files as ESM, where `require`/`module.exports` don't exist. **First attempt** renamed them to `.cjs` — but that made Vercel's Vite preset stop detecting them as functions entirely (deploy showed no `lambdaRuntimeStats`; `/api/proxy` returned 404). Vercel only auto-detects `.js`/`.ts`/`.mjs` in `api/` for this project, so the correct fix is to keep `.js` and convert the source to ESM. Fixes both the One Pace Pixeldrain proxy and AllManga (anime) resolution — AllManga playback on web was broken by the same root cause.
