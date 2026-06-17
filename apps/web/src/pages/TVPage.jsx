@@ -2438,7 +2438,6 @@ export default function TVPage({
                           ? "about:blank"
                           : resolvedPlayerUrl || "about:blank"
                       }
-                      sandbox="allow-scripts allow-same-origin allow-forms"
                       style={{
                         position: "absolute",
                         inset: 0,
@@ -2471,7 +2470,6 @@ export default function TVPage({
                             playerEp.episode,
                           )
                     }
-                    sandbox="allow-scripts allow-same-origin allow-forms"
                     style={{
                       position: "absolute",
                       inset: 0,

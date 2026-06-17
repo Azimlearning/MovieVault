@@ -1481,7 +1481,6 @@ export default function MoviePage({
                       ? "about:blank"
                       : resolvedPlayerUrl || "about:blank"
                   }
-                  sandbox="allow-scripts allow-same-origin allow-forms"
                   style={{
                     position: "absolute",
                     inset: 0,
@@ -1504,7 +1503,6 @@ export default function MoviePage({
                     ? "about:blank"
                     : getSourceUrl(playerSource, "movie", item.id, null, null)
                 }
-                sandbox="allow-scripts allow-same-origin allow-forms"
                 style={{
                   position: "absolute",
                   inset: 0,

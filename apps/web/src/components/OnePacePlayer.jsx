@@ -327,7 +327,6 @@ export default function OnePacePlayer({
           onClick={togglePlay}
           onDoubleClick={toggleFullscreen}
           autoPlay
-          crossOrigin="anonymous"
           onError={() => setPlayError("Pixeldrain stream error. Try swapping resolution or copy the link.")}
         >
           {subtitles.map(sub => (
