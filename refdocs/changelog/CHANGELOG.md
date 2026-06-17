@@ -16,6 +16,12 @@
 
 ## [Unreleased]
 
+### 2026-06-17 — Fix One Pace streaming via serverless proxy (Pixeldrain embed block)
+- **Changed:** `apps/web/src/utils/onepaceApi.js` — route Pixeldrain stream URLs through the existing `/api/proxy` serverless function in production; bumped cache key `v2` → `v3`. Also removed `crossOrigin="anonymous"` from the One Pace `<video>` and `sandbox` from the Movie/TV player iframes (prior commit) — those were necessary but not sufficient.
+- **Decided:** Diagnosed with Playwright against the live site: browser fetches of `pixeldrain.com/api/file/{id}` return **403 `{"value":"embed_not_allowed"}`**, while identical server-side requests (curl / the proxy function) return **206 video/mp4**. Pixeldrain blocks browser-originated embeds (Sec-Fetch / browser signal), not by Origin/Referer. The same-origin `/api/proxy` streams the file server-side with Range passthrough, bypassing the block. Gated on `import.meta.env.PROD` so local `vite dev` (no serverless functions) keeps hitting Pixeldrain directly, which already works there.
+- **Deviations:** Reused the existing generic `api/proxy.js` rather than writing a Pixeldrain-specific endpoint — it already forwards Range/Content-Range and sets CORS.
+- **Known issues / next steps:** Proxying ~400 MB files through a Vercel function uses bandwidth/compute; acceptable for now given Range requests pull only what's played. Subtitle fetches from `onepace.arl.sh` may still hit CORS (caught/skipped, non-fatal). Movie/TV iframe sources: Videasy (default) frames fine on the live site; vidsrc.to / 2embed (marked "unstable") time out — those are flaky third parties, not an app bug.
+
 ### 2026-06-17 — Fix two web app crashes (showBlockedModal + One Pace streaming)
 - **Changed:** `apps/web/src/pages/MoviePage.jsx` — added missing `useBlockedStats(item.id)` call to declare `showBlockedModal`/`setShowBlockedModal` (used in JSX but never declared, causing a hard crash on the movie page). `apps/web/src/utils/onepaceApi.js` — removed `?download` from Pixeldrain stream URL (download-mode response cannot be streamed by the browser's `<video>` element); bumped cache key from `v1` → `v2` to invalidate stale cached URLs.
 - **Decided:** Used `item.id` as the `useBlockedStats` reset key in MoviePage (consistent with per-media reset semantics). Cache key bump is the cleanest way to force a re-fetch without requiring users to clear localStorage.

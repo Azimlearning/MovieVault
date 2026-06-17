@@ -1,6 +1,6 @@
 const META_URL = 'https://raw.githubusercontent.com/au2001/onepace-stremio/main/meta/series/onepace.json';
 const EP_URL = 'https://raw.githubusercontent.com/DendyLusus/one-pace-map/main/data/episodes.json';
-const CACHE_KEY = 'onepace_catalog_v2';
+const CACHE_KEY = 'onepace_catalog_v3';
 const CACHE_DURATION = 6 * 60 * 60 * 1000;
 
 function parseChapters(fileName) {
@@ -60,11 +60,18 @@ async function fetchAndMergeCatalog() {
         .replace(/\s+/g, " ");
 
       const epResolution = arc.resolution ? `${arc.resolution}p` : '1080p';
+      const directUrl = `https://pixeldrain.com/api/file/${ep.file_id}`;
       const resolutions = {};
       resolutions[epResolution] = {
         pixeldrainId: ep.file_id,
         sizeMb: Math.round(ep.size / (1024 * 1024)),
-        url: `https://pixeldrain.com/api/file/${ep.file_id}`,
+        // Pixeldrain blocks browser-originated embeds (403 "embed_not_allowed"),
+        // so on the deployed web app we stream through the same-origin serverless
+        // proxy (server-side requests are not blocked). Local dev hits Pixeldrain
+        // directly since the proxy function only exists on Vercel.
+        url: import.meta.env.PROD
+          ? `/api/proxy?url=${encodeURIComponent(directUrl)}`
+          : directUrl,
       };
 
       const subtitles = [];
