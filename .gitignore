@@ -8,3 +8,17 @@ dist/
 Windows_x64-portable/
 
 .vercel
+
+# scratch / debug files
+iframe-test.html
+moviepage-diff.txt
+renderer-debug.log
+test-onepace.js
+*.log
+
+# Claude Code local-only state
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# Playwright MCP scratch (screenshots/snapshots)
+.playwright-mcp/

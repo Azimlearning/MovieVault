@@ -1,6 +1,6 @@
 # MovieVault — Claude Context
 
-> Read this file at the start of every session. The rules below are mandatory for all AI agents.
+> Read this file at the start of every session. Then read `.claude/memory/preflight.md` and run through it. The rules below are mandatory for all AI agents.
 
 ---
 
