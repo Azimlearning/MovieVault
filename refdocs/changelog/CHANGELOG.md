@@ -16,6 +16,18 @@
 
 ## [Unreleased]
 
+### 2026-06-17 — Port One Pace feature to web app
+- **Changed:** Created `apps/web/src/pages/OnePacePage.jsx`, `OnePaceArcPage.jsx`, `apps/web/src/components/OnePacePlayer.jsx`, `apps/web/src/utils/onepaceApi.js`, `apps/web/src/utils/onepaceMapping.js`, `apps/web/src/styles/onepacePlayer.css`. Added `PauseIcon`, `MaximizeIcon`, `VolumeIcon`, `VolumeMuteIcon`, `StrawHatIcon` to `apps/web/src/components/Icons.jsx`. Added One Pace nav button (StrawHat) to web Sidebar. Added `onepace`/`onepaceArc`/`onepacePlayer` routes and lazy imports to web `App.jsx`.
+- **Decided:** Pages self-fetch the catalog rather than receiving it from App via props. Electron IPC caching replaced by `localStorage` cache (6h TTL) in `onepaceApi.js`, fetching the two public GitHub raw URLs directly. `window.electron.openExternal` → `window.open(..., "_blank")`. AniList sync kept since web `utils/oauth.js` exists.
+- **Deviations:** `OnePacePage` fetches its own arcs (self-contained) instead of receiving `arcs` as a prop — cleaner for web since there's no IPC layer. Watch party props removed from web player.
+- **Known issues / next steps:** Pixeldrain direct-stream URLs may hit browser CORS; users can use "Copy Pixeldrain Link" fallback. Subtitle fetch from `onepace.arl.sh` may also need CORS headers — verify after deploy.
+
+### 2026-06-17 — .claude operating layer scaffolded
+- **Changed:** Created `.claude/` with `hooks/check_secrets.py` (blocks hardcoded TMDB keys/JWTs in source), `hooks/check_polyfill_sync.py` (warns when `preload.js` is edited without updating `polyfill.js`), `memory/preflight.md` (session-start checklist), and `settings.json` (permissions allowlist + hook wiring).
+- **Decided:** Two hooks: one hard-blocking (secrets), one warning-only (polyfill sync). No format/lint hook — no ruff/pyright in this JS project.
+- **Deviations:** None.
+- **Known issues / next steps:** Hooks require Python 3 on PATH. On Windows, `python3` may need to be `python` — test with a dummy write if hooks don't fire.
+
 ### 2026-06-17 — Repo documentation reorganization
 - **Changed:** Created `refdocs/` folder structure with subfolders `changelog/`, `plans/`, `execution/`, `guides/`. Moved all loose `.md` files from root into the appropriate subfolder.
 - **Changed:** Created `CLAUDE.md` at project root to brief AI agents on the two-codebase structure (Electron `src/` vs Web `apps/web/src/`) and mandatory doc rules.
