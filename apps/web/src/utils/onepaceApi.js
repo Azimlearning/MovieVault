@@ -1,6 +1,6 @@
 const META_URL = 'https://raw.githubusercontent.com/au2001/onepace-stremio/main/meta/series/onepace.json';
 const EP_URL = 'https://raw.githubusercontent.com/DendyLusus/one-pace-map/main/data/episodes.json';
-const CACHE_KEY = 'onepace_catalog_v1';
+const CACHE_KEY = 'onepace_catalog_v2';
 const CACHE_DURATION = 6 * 60 * 60 * 1000;
 
 function parseChapters(fileName) {
@@ -64,7 +64,7 @@ async function fetchAndMergeCatalog() {
       resolutions[epResolution] = {
         pixeldrainId: ep.file_id,
         sizeMb: Math.round(ep.size / (1024 * 1024)),
-        url: `https://pixeldrain.com/api/file/${ep.file_id}?download`,
+        url: `https://pixeldrain.com/api/file/${ep.file_id}`,
       };
 
       const subtitles = [];

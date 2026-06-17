@@ -16,6 +16,12 @@
 
 ## [Unreleased]
 
+### 2026-06-17 — Fix two web app crashes (showBlockedModal + One Pace streaming)
+- **Changed:** `apps/web/src/pages/MoviePage.jsx` — added missing `useBlockedStats(item.id)` call to declare `showBlockedModal`/`setShowBlockedModal` (used in JSX but never declared, causing a hard crash on the movie page). `apps/web/src/utils/onepaceApi.js` — removed `?download` from Pixeldrain stream URL (download-mode response cannot be streamed by the browser's `<video>` element); bumped cache key from `v1` → `v2` to invalidate stale cached URLs.
+- **Decided:** Used `item.id` as the `useBlockedStats` reset key in MoviePage (consistent with per-media reset semantics). Cache key bump is the cleanest way to force a re-fetch without requiring users to clear localStorage.
+- **Deviations:** None from intent; these were both missing from the One Pace port.
+- **Known issues / next steps:** Pixeldrain streams may still hit CORS on some browsers. If that surfaces, the "Copy Pixeldrain Link" fallback remains available.
+
 ### 2026-06-17 — Port One Pace feature to web app
 - **Changed:** Created `apps/web/src/pages/OnePacePage.jsx`, `OnePaceArcPage.jsx`, `apps/web/src/components/OnePacePlayer.jsx`, `apps/web/src/utils/onepaceApi.js`, `apps/web/src/utils/onepaceMapping.js`, `apps/web/src/styles/onepacePlayer.css`. Added `PauseIcon`, `MaximizeIcon`, `VolumeIcon`, `VolumeMuteIcon`, `StrawHatIcon` to `apps/web/src/components/Icons.jsx`. Added One Pace nav button (StrawHat) to web Sidebar. Added `onepace`/`onepaceArc`/`onepacePlayer` routes and lazy imports to web `App.jsx`.
 - **Decided:** Pages self-fetch the catalog rather than receiving it from App via props. Electron IPC caching replaced by `localStorage` cache (6h TTL) in `onepaceApi.js`, fetching the two public GitHub raw URLs directly. `window.electron.openExternal` → `window.open(..., "_blank")`. AniList sync kept since web `utils/oauth.js` exists.

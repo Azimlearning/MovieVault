@@ -134,6 +134,10 @@ export default function MoviePage({
   const [showDetailsPanel, setShowDetailsPanel] = useState(false);
 
   const progressKey = `movie_${item.id}`;
+  const {
+    showModal: showBlockedModal,
+    setShowModal: setShowBlockedModal,
+  } = useBlockedStats(item.id);
   const pct = progress[progressKey] || 0;
   const isWatched = !!watched?.[progressKey];
   const hasProgress = pct > 0;
