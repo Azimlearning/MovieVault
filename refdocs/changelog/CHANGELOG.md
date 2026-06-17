@@ -16,6 +16,12 @@
 
 ## [Unreleased]
 
+### 2026-06-17 — Fix serverless functions crashing (ESM vs CommonJS) — proxy + AllManga
+- **Changed:** Renamed `apps/web/api/proxy.js` → `proxy.cjs` and `apps/web/api/resolve-allmanga.js` → `resolve-allmanga.cjs`.
+- **Decided:** Verified against the live deployment that BOTH serverless functions return 500 `FUNCTION_INVOCATION_FAILED` with runtime log `ReferenceError: require is not defined`. Cause: `apps/web/package.json` has `"type": "module"`, so Vercel treats `.js` function files as ESM, where `require`/`module.exports` don't exist. The `.cjs` extension forces CommonJS regardless of package type, the lowest-risk fix (no logic rewrite). Vercel still routes `/api/proxy` and `/api/resolve-allmanga` by basename. This means AllManga (anime) playback on the web app was also broken and is fixed by the same change.
+- **Deviations:** Chose `.cjs` rename over converting both files to ESM `import`/`export default` — smaller diff, no risk to the working logic.
+- **Known issues / next steps:** Re-verify on deploy: `/api/proxy` should return 206 for the One Pace Pixeldrain URL, unblocking One Pace playback end-to-end.
+
 ### 2026-06-17 — Fix One Pace streaming via serverless proxy (Pixeldrain embed block)
 - **Changed:** `apps/web/src/utils/onepaceApi.js` — route Pixeldrain stream URLs through the existing `/api/proxy` serverless function in production; bumped cache key `v2` → `v3`. Also removed `crossOrigin="anonymous"` from the One Pace `<video>` and `sandbox` from the Movie/TV player iframes (prior commit) — those were necessary but not sufficient.
 - **Decided:** Diagnosed with Playwright against the live site: browser fetches of `pixeldrain.com/api/file/{id}` return **403 `{"value":"embed_not_allowed"}`**, while identical server-side requests (curl / the proxy function) return **206 video/mp4**. Pixeldrain blocks browser-originated embeds (Sec-Fetch / browser signal), not by Origin/Referer. The same-origin `/api/proxy` streams the file server-side with Range passthrough, bypassing the block. Gated on `import.meta.env.PROD` so local `vite dev` (no serverless functions) keeps hitting Pixeldrain directly, which already works there.
