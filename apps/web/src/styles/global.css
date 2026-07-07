@@ -52,16 +52,33 @@
     --surface2: #1a1a1a;
     --surface3: #222222;
     --border: #2a2a2a;
-    --red: #e50914;
-    --red2: #ff1a24;
-    --red-dim: rgba(229, 9, 20, 0.15);
-    --red-glow: 0 0 30px rgba(229, 9, 20, 0.3);
+    /* V3 accent — amber by default, overridable via Settings */
+    --accent: #ff8a3d;
+    --accent2: #ffaa66;
+    --accent-dim: rgba(255, 138, 61, 0.15);
+    --accent-glow: 0 0 30px rgba(255, 138, 61, 0.3);
+    /* Legacy aliases — keep for any components still using --red* */
+    --red: #ff8a3d;
+    --red2: #ffaa66;
+    --red-dim: rgba(255, 138, 61, 0.15);
+    --red-glow: 0 0 30px rgba(255, 138, 61, 0.3);
+    --danger: #e5484d;
+    --danger2: #ff6369;
+    --danger-dim: rgba(229, 72, 77, 0.15);
+    --danger-glow: 0 0 30px rgba(229, 72, 77, 0.3);
+    --violet: #7c6fe0;
     --gold: #c8a84b;
     --text: #f0f0f0;
     --text2: #c0c0c0;
     --text3: #909090;
-    --sidebar: 72px;
+    /* Layout */
+    --sidebar: 240px;
+    --bottom-nav: 60px;
     --radius: 8px;
+    --card-radius: 18px;
+    --card-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    --card-shadow-hover: 0 12px 32px rgba(0, 0, 0, 0.55);
+    --card-gap: 16px;
     --font-display: "Bebas Neue", sans-serif;
     --font-body: "DM Sans", sans-serif;
 }
@@ -94,7 +111,7 @@ body,
     background: var(--red);
 }
 
-/* ── Sidebar ──────────────────────────────────────────────────────────── */
+/* ── Sidebar — desktop labeled nav ────────────────────────────────────── */
 .sidebar {
     position: fixed;
     left: 0;
@@ -105,19 +122,42 @@ body,
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    align-items: center;
-    padding: 16px 0;
-    gap: 6px;
+    align-items: stretch;
+    padding: 16px 12px;
+    gap: 2px;
     z-index: 100;
+    overflow: hidden;
+}
+
+/* Archivist's Vault — vertical sprocket strip along sidebar right edge */
+.sidebar::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 14px;
+    pointer-events: none;
+    background-color: rgba(255, 138, 61, 0.04);
+    background-image: radial-gradient(circle 3px at 50% 50%, rgba(255, 138, 61, 0.18) 100%, transparent 100%);
+    background-size: 14px 22px;
+    background-repeat: repeat-y;
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    padding: 4px 4px 16px;
+    flex-shrink: 0;
 }
 
 .sidebar-logo {
-    width: 44px;
-    height: 44px;
-    margin-bottom: 12px;
-    cursor: pointer;
-    transition: filter 0.2s;
+    width: 34px;
+    height: 34px;
     flex-shrink: 0;
+    transition: filter 0.2s;
     overflow: visible;
 }
 
@@ -125,50 +165,239 @@ body,
     width: 100%;
     height: 100%;
     display: block;
-    filter: drop-shadow(0 0 8px rgba(229, 9, 20, 0.5));
+    filter: drop-shadow(0 0 8px rgba(255, 138, 61, 0.5));
     transition: filter 0.2s;
 }
 
-.sidebar-logo:hover img {
-    filter: drop-shadow(0 0 16px rgba(229, 9, 20, 0.8));
+.sidebar-header:hover .sidebar-logo img {
+    filter: drop-shadow(0 0 16px rgba(255, 138, 61, 0.8));
+}
+
+.sidebar-wordmark {
+    font-family: var(--font-display);
+    font-size: 19px;
+    letter-spacing: 0.5px;
+    color: var(--text);
+    white-space: nowrap;
 }
 
 .sidebar-sep {
-    width: 32px;
     height: 1px;
     background: var(--border);
-    margin: 6px 0;
+    margin: 10px 4px;
     flex-shrink: 0;
 }
 
-.sidebar-btn {
-    width: 44px;
-    height: 44px;
-    border-radius: var(--radius);
+.sidebar-section-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text3);
+    padding: 10px 10px 6px;
+    flex-shrink: 0;
+}
+
+.nav-btn {
+    width: 100%;
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 12px;
+    padding: 10px;
+    border-radius: var(--radius);
     border: none;
     background: transparent;
-    color: var(--text3);
+    color: var(--text2);
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+    flex-shrink: 0;
+    text-align: left;
+    font-family: var(--font-body);
+    font-size: 14px;
+}
+
+.nav-btn svg {
+    width: 19px;
+    height: 19px;
+    flex-shrink: 0;
+}
+
+.nav-btn-label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.nav-btn-badge {
+    flex-shrink: 0;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    background: var(--accent);
+    color: #1a0f05;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+    padding: 0 5px;
+}
+
+.nav-btn:hover,
+.nav-btn.active {
+    color: var(--text);
+    background: var(--accent-dim);
+}
+
+.nav-btn.active {
+    color: var(--accent);
+}
+
+/* Saved (pinned) section inside sidebar */
+.sidebar-saved {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px 0;
+    min-height: 0;
+}
+
+.saved-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background 0.15s;
+    border: 1px solid transparent;
+    flex-shrink: 0;
+}
+
+.saved-row:hover {
+    background: var(--surface2);
+    border-color: var(--border);
+}
+
+.saved-row-thumb {
+    width: 32px;
+    height: 48px;
+    border-radius: 4px;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: var(--surface3);
+}
+
+.saved-row-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.saved-row-title {
+    flex: 1;
+    font-size: 12px;
+    color: var(--text2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.3;
+}
+
+/* Legacy saved-thumb (icon-only rail) — kept for tooltip component */
+.saved-thumb {
+    width: 44px;
+    height: 64px;
+    border-radius: 5px;
+    overflow: visible;
     cursor: pointer;
     transition: all 0.2s;
-    position: relative;
     flex-shrink: 0;
+    position: relative;
+    border: 1px solid var(--border);
+}
+
+.saved-thumb img {
+    border-radius: 5px;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.saved-thumb:hover {
+    border-color: var(--accent);
+    transform: scale(1.05);
+    box-shadow: var(--accent-glow);
+}
+
+.saved-thumb-tooltip {
+    position: fixed;
+    left: calc(var(--sidebar) + 8px);
+    transform: translateY(-50%);
+    background: var(--surface3);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 5px 10px;
+    border-radius: 5px;
+    white-space: normal;
+    max-width: 180px;
+    pointer-events: none;
+    border: 1px solid var(--border);
+    z-index: 9999;
+    line-height: 1.3;
+    text-align: left;
+}
+
+.sidebar-bottom {
+    margin-top: auto;
+    flex-shrink: 0;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+}
+
+/* sidebar-btn kept for backward compat — maps to nav-btn style */
+.sidebar-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    border-radius: var(--radius);
+    border: none;
+    background: transparent;
+    color: var(--text2);
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+    flex-shrink: 0;
+    font-family: var(--font-body);
+    font-size: 14px;
+    position: relative;
 }
 
 .sidebar-btn svg {
-    width: 20px;
-    height: 20px;
+    width: 19px;
+    height: 19px;
+    flex-shrink: 0;
 }
 
 .sidebar-btn:hover,
 .sidebar-btn.active {
-    color: var(--red);
-    background: var(--red-dim);
-    box-shadow: 0 0 0 1px var(--red);
+    color: var(--text);
+    background: var(--accent-dim);
 }
 
+.sidebar-btn.active {
+    color: var(--accent);
+}
+
+/* Tooltip (icon-only rail legacy) */
 .sidebar-btn .tooltip {
     position: absolute;
     left: calc(100% + 10px);
@@ -192,93 +421,14 @@ body,
     opacity: 1;
 }
 
-.sidebar-saved {
-    flex: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 0;
-    min-height: 0;
-}
-
-.saved-thumb {
-    width: 44px;
-    height: 64px;
-    border-radius: 5px;
-    overflow: visible;
-    cursor: pointer;
-    transition: all 0.2s;
-    flex-shrink: 0;
-    position: relative;
-    border: 1px solid var(--border);
-}
-
-.saved-thumb img {
-    border-radius: 5px;
-    overflow: hidden;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-.saved-thumb > .no-img {
-    border-radius: 5px;
-    overflow: hidden;
-    width: 100%;
-    height: 100%;
-}
-
-.saved-thumb:hover {
-    border-color: var(--red);
-    transform: scale(1.05);
-    box-shadow: var(--red-glow);
-}
-
-.saved-thumb-tooltip {
-    position: fixed;
-    left: 70px;
-    transform: translateY(-50%);
-    background: var(--surface3);
-    color: var(--text);
-    font-size: 12px;
-    font-weight: 500;
-    padding: 5px 10px;
-    border-radius: 5px;
-    white-space: normal;
-    max-width: 180px;
-    pointer-events: none;
-    border: 1px solid var(--border);
-    z-index: 9999;
-    line-height: 1.3;
-    text-align: left;
-}
-
-.saved-thumb .no-img {
-    width: 100%;
-    height: 100%;
-    background: var(--surface3);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text3);
-    font-size: 10px;
-}
-
-.sidebar-bottom {
-    margin-top: auto;
-    flex-shrink: 0;
-}
-
 /* ── Main ──────────────────────────────────────────────────────────────── */
 .main {
     margin-left: var(--sidebar);
     height: 100vh;
     overflow-y: auto;
     overflow-x: hidden;
+    /* iOS momentum scroll */
+    -webkit-overflow-scrolling: touch;
 }
 
 /* ── Hero ──────────────────────────────────────────────────────────────── */
@@ -450,15 +600,44 @@ body,
 .section-title::after {
     content: "";
     flex: 1;
-    height: 1px;
-    background: var(--border);
+    height: 12px;
+    background-color: #100e08;
+    background-image: radial-gradient(circle 3.5px at 50% 50%, #0a0a0a 100%, transparent 100%);
+    background-size: 20px 12px;
+    background-repeat: repeat-x;
+    border-radius: 2px;
+    opacity: 0.55;
 }
 
 /* ── Cards ──────────────────────────────────────────────────────────────── */
 .cards-grid {
     display: grid;
-    gap: 16px;
+    gap: var(--card-gap);
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+.card--featured {
+    grid-column: span 2;
+}
+
+.card--featured .card-poster {
+    aspect-ratio: 16 / 9;
+}
+
+/* Archivist's Vault — amber film leader strip on featured card top edge */
+.card--featured::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 10px;
+    z-index: 4;
+    pointer-events: none;
+    background-color: rgba(255, 138, 61, 0.14);
+    background-image: radial-gradient(circle 2.5px at 50% 50%, rgba(255, 138, 61, 0.55) 100%, transparent 100%);
+    background-size: 18px 10px;
+    background-repeat: repeat-x;
 }
 
 body.compact-mode .cards-grid {
@@ -488,18 +667,43 @@ body.no-anim *::after {
 
 .card {
     cursor: pointer;
-    border-radius: var(--radius);
+    border-radius: var(--card-radius);
     overflow: hidden;
     background: var(--surface2);
     border: 1px solid var(--border);
+    box-shadow: var(--card-shadow);
     transition: all 0.25s;
     position: relative;
 }
 
+/* Archivist's Vault — film-frame registration brackets on hover */
+.card::before {
+    content: "";
+    position: absolute;
+    inset: 6px;
+    z-index: 3;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+    background:
+        linear-gradient(var(--accent), var(--accent)) top left / 10px 1.5px no-repeat,
+        linear-gradient(var(--accent), var(--accent)) top left / 1.5px 10px no-repeat,
+        linear-gradient(var(--accent), var(--accent)) top right / 10px 1.5px no-repeat,
+        linear-gradient(var(--accent), var(--accent)) top right / 1.5px 10px no-repeat,
+        linear-gradient(var(--accent), var(--accent)) bottom left / 10px 1.5px no-repeat,
+        linear-gradient(var(--accent), var(--accent)) bottom left / 1.5px 10px no-repeat,
+        linear-gradient(var(--accent), var(--accent)) bottom right / 10px 1.5px no-repeat,
+        linear-gradient(var(--accent), var(--accent)) bottom right / 1.5px 10px no-repeat;
+}
+
+.card:hover::before {
+    opacity: 1;
+}
+
 .card:hover {
     transform: translateY(-4px) scale(1.02);
-    border-color: var(--red);
-    box-shadow: var(--red-glow);
+    border-color: var(--accent);
+    box-shadow: var(--card-shadow-hover), var(--accent-glow);
 }
 
 .card-poster {
@@ -4478,5 +4682,264 @@ html[data-win-titlebar][data-maximized] .main {
 
 .synopsis-expand-btn:hover {
     text-decoration: underline;
+}
+
+/* ── V3 token aliases — accent replaces red everywhere ───────────────── */
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+/* ── Hero cluster (banner + quick-picks side by side) ────────────────── */
+.hero-cluster {
+    display: grid;
+    grid-template-columns: minmax(0, 2.2fr) minmax(180px, 1fr);
+    gap: var(--card-gap);
+    padding: 0 48px 0;
+    margin-bottom: 0;
+}
+
+.hero-quickpicks {
+    display: flex;
+    flex-direction: column;
+    gap: var(--card-gap);
+    align-self: stretch;
+}
+
+.hero-quickpicks-title {
+    font-family: var(--font-display);
+    font-size: 16px;
+    letter-spacing: 1px;
+    color: var(--text3);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+
+.hero-quickpick-tile {
+    flex: 1;
+    border-radius: var(--card-radius);
+    overflow: hidden;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    position: relative;
+    min-height: 80px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    background-size: cover;
+    background-position: center;
+}
+
+.hero-quickpick-tile::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.2) 100%);
+}
+
+.hero-quickpick-tile:hover {
+    border-color: var(--accent);
+    box-shadow: var(--accent-glow);
+}
+
+.hero-quickpick-label {
+    position: absolute;
+    bottom: 8px;
+    left: 10px;
+    right: 10px;
+    z-index: 1;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ── Genre browser ────────────────────────────────────────────────────── */
+.genre-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.genre-tag {
+    padding: 5px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text2);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+    white-space: nowrap;
+}
+
+.genre-tag:hover {
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+.genre-tag--active {
+    border-color: var(--accent) !important;
+    background: var(--accent) !important;
+    color: #1a0f05 !important;
+}
+
+/* ── Reduced motion — suppress new animations ─────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+    .card::before { transition: none !important; }
+    .card:hover { transform: none; }
+    .hero-quickpick-tile { transition: box-shadow 0.2s ease-out; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE  (≤ 768px)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+    :root {
+        --sidebar: 0px;
+    }
+
+    /* Sidebar becomes a fixed bottom nav bar */
+    .sidebar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        top: auto;
+        width: 100%;
+        height: var(--bottom-nav);
+        flex-direction: row;
+        justify-content: space-around;
+        align-items: center;
+        padding: 0 4px;
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+        gap: 0;
+        border-right: none;
+        border-top: 1px solid var(--border);
+        overflow: visible;
+    }
+
+    /* Hide sidebar sprocket strip on mobile */
+    .sidebar::after { display: none; }
+
+    /* Hide desktop-only elements inside sidebar on mobile */
+    .sidebar-header,
+    .sidebar-wordmark,
+    .sidebar-sep,
+    .sidebar-section-label,
+    .sidebar-saved,
+    .sidebar-bottom,
+    .nav-btn-label {
+        display: none;
+    }
+
+    /* Bottom nav buttons */
+    .nav-btn,
+    .sidebar-btn {
+        width: auto;
+        flex: 1;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 3px;
+        padding: 6px 4px;
+        font-size: 10px;
+        border-radius: 0;
+        height: 100%;
+    }
+
+    .nav-btn svg,
+    .sidebar-btn svg {
+        width: 22px;
+        height: 22px;
+    }
+
+    /* Show mobile label beneath icon */
+    .nav-btn::after {
+        font-size: 10px;
+        color: currentColor;
+    }
+
+    /* Tooltips don't make sense on mobile */
+    .sidebar-btn .tooltip { display: none; }
+
+    /* Main content — no left margin, bottom padding for nav bar */
+    .main {
+        margin-left: 0;
+        height: 100dvh;
+        padding-bottom: calc(var(--bottom-nav) + env(safe-area-inset-bottom, 0px));
+    }
+
+    /* Section padding reduced on mobile */
+    .section { padding: 12px 16px; }
+
+    /* Cards — smaller minimum on mobile */
+    .cards-grid {
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 10px;
+    }
+
+    /* Featured card stays 2-col but on a narrower grid */
+    .card--featured { grid-column: span 2; }
+
+    /* Hero cluster stacks vertically on mobile */
+    .hero-cluster {
+        grid-template-columns: 1fr;
+        padding: 0 12px;
+    }
+
+    .hero-quickpicks { display: none; }
+
+    /* Genre chips wrap more aggressively */
+    .genre-chip-row { gap: 6px; }
+    .genre-tag { font-size: 11px; padding: 4px 10px; }
+
+    /* Player fullscreen — ensure it fills mobile viewport */
+    .player-wrap--fullscreen {
+        position: fixed !important;
+        inset: 0 !important;
+        z-index: 9999 !important;
+        height: 100dvh !important;
+        padding-bottom: 0 !important;
+    }
+
+    /* Touch targets — minimum 44px */
+    .player-overlay-btn,
+    .source-btn,
+    button.card-play {
+        min-height: 44px;
+        min-width: 44px;
+    }
+
+    /* Hero banner smaller on mobile */
+    .hero { height: 300px; }
+    .hero-content { padding: 20px 16px; }
+    .hero-title { font-size: 28px !important; }
+
+    /* Detail pages — reduce padding */
+    .detail-hero { height: 240px; }
+    .detail-content { padding: 16px; }
+}
+
+/* Very small screens (≤ 480px) */
+@media (max-width: 480px) {
+    .cards-grid {
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 8px;
+    }
+
+    .card--featured { grid-column: span 2; }
+    .hero { height: 240px; }
+    .hero-title { font-size: 22px !important; }
+}
+
+/* Landscape mobile — taller nav area with safe area */
+@media (max-width: 768px) and (orientation: landscape) {
+    :root { --bottom-nav: 50px; }
+    .hero { height: 200px; }
+    .main {
+        padding-bottom: calc(var(--bottom-nav) + env(safe-area-inset-bottom, 0px));
+    }
 }
 

@@ -2438,6 +2438,9 @@ export default function TVPage({
                           ? "about:blank"
                           : resolvedPlayerUrl || "about:blank"
                       }
+                      sandbox="allow-scripts allow-forms allow-same-origin allow-presentation allow-modals"
+                      allow="fullscreen; autoplay; encrypted-media; picture-in-picture"
+                      allowFullScreen
                       style={{
                         position: "absolute",
                         inset: 0,
@@ -2470,6 +2473,9 @@ export default function TVPage({
                             playerEp.episode,
                           )
                     }
+                    sandbox="allow-scripts allow-forms allow-same-origin allow-presentation allow-modals"
+                    allow="fullscreen; autoplay; encrypted-media; picture-in-picture"
+                    allowFullScreen
                     style={{
                       position: "absolute",
                       inset: 0,

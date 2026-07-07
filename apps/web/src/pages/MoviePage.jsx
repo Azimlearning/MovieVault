@@ -1484,6 +1484,9 @@ export default function MoviePage({
                       ? "about:blank"
                       : resolvedPlayerUrl || "about:blank"
                   }
+                  sandbox="allow-scripts allow-forms allow-same-origin allow-presentation allow-modals"
+                  allow="fullscreen; autoplay; encrypted-media; picture-in-picture"
+                  allowFullScreen
                   style={{
                     position: "absolute",
                     inset: 0,
@@ -1506,6 +1509,9 @@ export default function MoviePage({
                     ? "about:blank"
                     : getSourceUrl(playerSource, "movie", item.id, null, null)
                 }
+                sandbox="allow-scripts allow-forms allow-same-origin allow-presentation allow-modals"
+                allow="fullscreen; autoplay; encrypted-media; picture-in-picture"
+                allowFullScreen
                 style={{
                   position: "absolute",
                   inset: 0,

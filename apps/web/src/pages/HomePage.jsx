@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import MediaCard from "../components/MediaCard";
 import TrendingCarousel from "../components/TrendingCarousel";
+import HeroQuickPicks from "../components/HeroQuickPicks";
+import GenreBrowser from "../components/GenreBrowser";
 import { tmdbFetch } from "../utils/api";
 import AsyncBoundary from "../components/AsyncBoundary";
 import HeroBanner from "../components/HeroBanner";
@@ -241,17 +243,34 @@ export default function HomePage({
   return (
     <div className="fade-in">
       <AsyncBoundary state={boundaryState} onRetry={onRetry}>
-        {/* ── Hero Banner (always first) ── */}
+        {/* ── Hero cluster: banner + quick-picks ── */}
         {trending.length > 0 && (
-          <HeroBanner
-            trending={trending}
-            trendingTV={trendingTV}
-            apiKey={apiKey}
-            onSelect={onSelect}
-            onSave={onSave}
-            saved={saved}
-          />
+          <div className="hero-cluster">
+            <HeroBanner
+              trending={trending}
+              trendingTV={trendingTV}
+              apiKey={apiKey}
+              onSelect={onSelect}
+              onSave={onSave}
+              saved={saved}
+            />
+            <HeroQuickPicks
+              items={topRatedItems}
+              onSelect={onSelect}
+              title="Top Rated"
+            />
+          </div>
         )}
+
+        {/* ── Genre browser ── */}
+        <GenreBrowser
+          apiKey={apiKey}
+          onSelect={onSelect}
+          watched={watched}
+          onMarkWatched={onMarkWatched}
+          onMarkUnwatched={onMarkUnwatched}
+          ratingsMap={enrichedRatingsMap}
+        />
 
       {/* ── Rows in user-configured order ── */}
       {rowOrder.map((id) => {
@@ -308,7 +327,7 @@ export default function HomePage({
                 )}
               </div>
               <div className="cards-grid">
-                {items.map((item) => {
+                {items.map((item, idx) => {
                   const type = item.media_type === "tv" ? "tv" : "movie";
                   const rk = `${type}_${item.id}`;
                   const rd = enrichedRatingsMap[rk] || {};
@@ -323,6 +342,7 @@ export default function HomePage({
                       onMarkUnwatched={onMarkUnwatched}
                       ageRating={rd.cert}
                       restricted={rd.restricted}
+                      featured={idx === 0}
                     />
                   );
                 })}

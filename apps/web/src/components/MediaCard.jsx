@@ -19,6 +19,7 @@ const MediaCard = memo(function MediaCard({
   ageRating,
   restricted,
   onRemove,
+  featured,
 }) {
   const title = item.title || item.name;
   const year = (item.release_date || item.first_air_date || "").slice(0, 4);
@@ -82,7 +83,7 @@ const MediaCard = memo(function MediaCard({
   return (
     <>
       <div
-        className={`card${isWatched ? " ep-watched" : ""}${isUnreleased ? " card--unreleased" : ""}`}
+        className={`card${isWatched ? " ep-watched" : ""}${isUnreleased ? " card--unreleased" : ""}${featured ? " card--featured" : ""}`}
         onClick={onClick}
         onContextMenu={isUnreleased ? undefined : openMenu}
       >

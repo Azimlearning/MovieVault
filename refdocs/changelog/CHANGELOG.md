@@ -16,6 +16,22 @@
 
 ## [Unreleased]
 
+### 2026-07-07 — Port V3 redesign to web app (main branch) + mobile/ad fixes
+- **Changed:**
+  - `apps/web/src/pages/MoviePage.jsx` + `TVPage.jsx` — added `sandbox`, `allow="fullscreen; autoplay; encrypted-media; picture-in-picture"`, and `allowFullScreen` to all four player iframes to block ad tab-hijacking and fix fullscreen on mobile
+  - `apps/web/src/styles/global.css` — full V3 redesign port: new `--accent*` tokens (amber default), `--danger*`, `--card-radius`, `--card-shadow`, `--card-gap`, `--sidebar`, `--bottom-nav`; new labeled sidebar CSS (NavBtn, sprocket strip, saved-row); card corner-bracket hover motif; film-strip section divider; hero-cluster and hero-quickpicks layout; genre-browser chips; full mobile responsive CSS (sidebar → bottom nav at ≤768px, `100dvh`, `env(safe-area-inset-bottom)`)
+  - `apps/web/src/components/Sidebar.jsx` — full rewrite: labeled NavBtn pattern replacing icon-only rail, inline SVG reel logo, removed Electron-only items (Back, Quit)
+  - `apps/web/src/utils/appearance.js` — amber added as first preset; `applyAccentColor` now writes `--accent*` tokens first then `--red*` aliases for backward compat
+  - `apps/web/src/components/HeroQuickPicks.jsx` — new file: three backdrop tiles beside hero showing top-rated picks
+  - `apps/web/src/components/GenreBrowser.jsx` — new file: TMDB genre chip row with discover grid on selection
+  - `apps/web/src/pages/HomePage.jsx` — added hero-cluster wrapper, HeroQuickPicks, GenreBrowser; `featured={idx === 0}` on MediaCard in renderList
+  - `apps/web/src/components/MediaCard.jsx` — added `featured` prop support (adds `card--featured` class)
+  - `apps/web/src/utils/homeLayout.js` — changed default view mode from "carousel" to "list" (Bento grid default)
+  - `apps/web/src/App.jsx` — changed default accent from "red" to "amber"
+- **Decided:** Sidebar bottom-nav on mobile uses CSS-only media query transform (no JS breakpoint detection) for zero-JS overhead. Fullscreen fix via `allow` permission policy attribute (modern browsers) + legacy `allowFullScreen`. Ad blocking via `sandbox` without `allow-popups` or `allow-top-navigation`.
+- **Deviations:** `featured` prop added directly to web app MediaCard (not ported from Electron) since the web and Electron MediaCards are separate files.
+- **Known issues / next steps:** Commit and push to main, then deploy to Vercel.
+
 ### 2026-06-17 — Add "Signature details" (design spells) to UI Redesign V3 plan
 - **Changed:** `refdocs/plans/PLAN_UI_REDESIGN_V3.md` — added §7 "Signature details (\"spells\")" listing 13 micro-interaction/personality ideas from a `design-spells` skill pass, split into Tier 1 (build first: poster-tilt parallax, ambient color bleed, player bias-lighting, One Pace treasure-map arc progress) and Tier 2 (stretch: spine-stack progress, hero idle parallax, projector-flicker title reveal, scrubber thumbnail trail, straw-hat sidebar indicator, Watch Party countdown ritual, Watch Party reaction physics, deadpan `BlockedStatsModal` copy, film-reel loader). Softened §3 Constraints and the §4 animation row from a blanket "no new dependency" to "vanilla CSS/Canvas/JS by default, small dependency allowed if a specific spell genuinely needs one." Added a Tier 1 acceptance criterion to §5. Fixed two stale `§9` cross-references (now `§6`). `refdocs/execution/EXEC_UI_REDESIGN_V3.md` — inserted a new Phase 5 "Signature details (\"spells\") pass" (Tier 1 implementation, file targets, per-spell 60fps/layout-shift/reduced-motion checks) ahead of the renumbered Phase 6 (was Phase 5) "Reduced motion & final pass," and added a rollback note for the new phase.
 - **Decided:** User approved all 13 spells for the plan and explicitly relaxed the no-new-dependency constraint: "if a new feature is needed for the design to function then ill gladly have them." Kept the policy narrow (dependency must be justified by a specific spell, not open-ended) rather than removing the constraint outright, since the user's wording was permissive-on-justification, not permissive-by-default.

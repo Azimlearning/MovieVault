@@ -606,7 +606,7 @@ export default function App() {
   }, [fetchTrending]);
   useEffect(() => {
     // Accent colour
-    const accent = storage.get(STORAGE_KEYS.ACCENT_COLOR) || "red";
+    const accent = storage.get(STORAGE_KEYS.ACCENT_COLOR) || "amber";
     applyAccentColor(accent);
     // Font size
     const font = storage.get(STORAGE_KEYS.FONT_SIZE) || "normal";
