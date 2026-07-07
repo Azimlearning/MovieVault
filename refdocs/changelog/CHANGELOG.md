@@ -16,6 +16,12 @@
 
 ## [Unreleased]
 
+### 2026-07-07 — Plan: Web V3 polish (mobile bugs, One Pace & Watch Party redesign)
+- **Changed:** New `refdocs/plans/PLAN_WEB_V3_POLISH.md` + `refdocs/execution/EXEC_WEB_V3_POLISH.md`; both READMEs' tables updated. Planning only — no code touched.
+- **Decided:** Real-device testing after the `92c5b95` deploy showed (a) player iframe "player.videasy.net refused to connect" on cellular, (b) source toolbar / Back / mark-progress overlap on ~412px width. Plan Phase 0 diagnoses the load failure across three hypotheses (new `sandbox` attribute regression vs carrier DNS blocking vs provider frame-ancestors) before deciding the fix — per-source `sandboxSafe` opt-out is the preferred shape if sandbox is the culprit, to keep the ad-popup blocking on sources that tolerate it. Scope also covers One Pace V3 restyle (pages still use inline `--red` styles), Party guest app V3 redesign (join flow drops the hand-typed UUID when the link carries it; party iframe gets the same sandbox hardening; sync reload throttled to explicit >10s seeks), site-wide polish (PWA manifest, skeletons, lazy images, a11y), and full mobile test matrices for both features.
+- **Deviations:** None.
+- **Known issues / next steps:** Execute Phase 0 diagnosis first; open questions in plan §5 (web-hosted parties, per-source sandbox policy, proxy fallback, PWA scope) need user decisions at the phases that hit them. `refdocs/guides/feature_parity.md` is stale (claims One Pace not ported to web) — fixed in plan Phase 5.
+
 ### 2026-07-07 — Port V3 redesign to web app (main branch) + mobile/ad fixes
 - **Changed:**
   - `apps/web/src/pages/MoviePage.jsx` + `TVPage.jsx` — added `sandbox`, `allow="fullscreen; autoplay; encrypted-media; picture-in-picture"`, and `allowFullScreen` to all four player iframes to block ad tab-hijacking and fix fullscreen on mobile
