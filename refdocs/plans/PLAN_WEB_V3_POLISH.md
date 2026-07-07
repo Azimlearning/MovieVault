@@ -14,11 +14,11 @@ The V3 redesign port (commit `92c5b95`) shipped the new look to the web app, but
 
 ### In scope
 
-**A. Mobile player bugs (P0)**
-- **A1 — Video fails to load on mobile.** Screenshot evidence: `player.videasy.net refused to connect` inside the player frame on a 5G connection. Three candidate causes, to be diagnosed in order:
-  1. **`sandbox` attribute regression** — added in `92c5b95` to block ad popups. Some embed providers' scripts touch `window.top.location` or `window.open` at boot; in a sandbox without `allow-top-navigation`/`allow-popups` those throw, and a provider that treats the exception as fatal shows a broken page. Diagnose by A/B loading the same title with and without `sandbox` on the same device.
-  2. **Carrier/ISP DNS blocking** — streaming embed domains are commonly blocked on mobile carriers (the failing screenshot is on cellular). Diagnose by comparing Wi-Fi vs cellular vs VPN on the same device.
-  3. **Provider-side `X-Frame-Options`/`frame-ancestors` change** — check response headers for the embed URL.
+**A. Player load failures — desktop AND mobile (P0)**
+- **A1 — `sandbox` attribute regression: CONFIRMED for Videasy.** Added in `92c5b95` to block ad popups. Desktop evidence (2026-07-07): Videasy renders an explicit **"Iframe Sandbox Detected — This iframe has sandbox restrictions that prevent proper functionality"** error page instead of the player. Videasy detects the sandbox and hard-refuses regardless of which `allow-*` permissions are granted alongside it (to be verified — see the graduated ladder in the execution doc). The mobile "player.videasy.net refused to connect" is likely the same root cause; residual hypotheses to check only if the sandbox fix doesn't resolve mobile:
+  1. **Carrier/ISP DNS blocking** — streaming embed domains are commonly blocked on mobile carriers (the failing mobile screenshot was on cellular). Compare Wi-Fi vs cellular vs VPN on the same device.
+  2. **Provider-side `X-Frame-Options`/`frame-ancestors` change** — check response headers for the embed URL.
+  - Fix shape: per-source `sandboxSafe` flag in `PLAYER_SOURCES`. First try a **graduated sandbox ladder** per source (add `allow-popups`, then `allow-top-navigation-by-user-activation`) to find the least-permissive set the provider accepts; if a provider rejects any sandbox at all (Videasy appears to), drop `sandbox` for that source only and accept its popups. Keep `allow="fullscreen…"` + `allowFullScreen` everywhere — the fullscreen fix is independent and harmless.
 - **A2 — Mitigation regardless of cause:** source failover UX. If the active source's iframe doesn't become interactive within a timeout, surface a visible "This source isn't loading — try another" banner with one-tap switching to the next source in `PLAYER_SOURCES`. (Today a dead iframe just sits there.)
 - **A3 — Overlapping controls on mobile (MoviePage/TVPage).** Observed: the player source toolbar (source pill, blocked-stats shield, open-external, download) floats detached over the poster/content; the Back button collides with the "Mark progress" 25/50/75/100% row; hero synopsis column is squeezed. The player detail pages need a proper ≤768 px layout pass: single column, full-width player, toolbar stacked below the player, no absolute-positioned elements crossing content.
 
@@ -61,9 +61,9 @@ Current state: guest app (`apps/party-guest/`, deployed at `movievault-party.ver
 
 ## 4. Acceptance criteria
 
-1. A movie plays on a real mobile device on cellular, or — if the source is carrier-blocked — the failover banner appears within ~8 s and switching sources is one tap.
+1. Videasy plays again on desktop (no "Iframe Sandbox Detected" page) **and** a movie plays on a real mobile device on cellular, or — if the source is carrier-blocked — the failover banner appears within ~8 s and switching sources is one tap.
 2. No overlapping UI on MoviePage/TVPage at 360 px, 390 px, and 412 px widths; all touch targets ≥ 44 px.
-3. Root cause of "refused to connect" is written down in DECISIONS.md with the diagnosis evidence (sandbox vs DNS vs headers).
+3. The per-source sandbox compatibility table (which sources tolerate which sandbox permissions) is written down in DECISIONS.md with the evidence.
 4. One Pace pages contain zero inline `--red` references and render correctly at 360 px; an episode streams and records progress on mobile.
 5. Party guest joining via a `/join/{id}` link never sees the Session ID field; join screen and room match V3 styling; party iframe blocks popup ads.
 6. Full One Pace and Party test checklists (C/D above) executed and results logged in the changelog.
@@ -72,6 +72,6 @@ Current state: guest app (`apps/party-guest/`, deployed at `movievault-party.ver
 ## 5. Open questions
 
 1. **Web-hosted parties?** Should the web app gain host capability (it has no `WatchPartyHostModal`), or does hosting stay Electron-only? Affects whether Party redesign includes any `apps/web/src` work at all.
-2. **Per-source sandbox policy:** if diagnosis shows sandbox breaks only some providers, do we maintain a `sandboxSafe` flag per source in `PLAYER_SOURCES`, accepting that non-sandboxed sources can pop ads?
+2. **Per-source sandbox policy:** ~~if diagnosis shows sandbox breaks only some providers~~ **Resolved 2026-07-07** — Videasy confirmed to hard-block sandboxed iframes, so a per-source `sandboxSafe` flag in `PLAYER_SOURCES` is the approach. Remaining sub-question: whether to label non-sandboxed sources in the source picker (e.g. "may show popups") so users can prefer protected sources.
 3. **Proxy fallback for blocked domains:** if carrier DNS blocking is confirmed, do we route embeds through a serverless proxy (like the existing One Pace Pixeldrain proxy)? Cost/abuse implications on Vercel Hobby.
 4. **PWA scope:** manifest-only, or also a service worker for offline shell? (Service worker adds cache-invalidation complexity.)

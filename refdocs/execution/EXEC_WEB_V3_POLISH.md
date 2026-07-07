@@ -1,24 +1,27 @@
 # EXEC — Web V3 Polish: Mobile Fixes, One Pace & Watch Party Redesign
 
 > **Companion plan:** `refdocs/plans/PLAN_WEB_V3_POLISH.md`
-> **Status at authoring (2026-07-07):** Not started. V3 port to web shipped in `92c5b95` and is live on Vercel. Mobile bug evidence: player iframe "refused to connect" on cellular; source toolbar / Back button / mark-progress row overlap on ~412 px width.
+> **Status at authoring (2026-07-07):** Not started. V3 port to web shipped in `92c5b95` and is live on Vercel.
+> **Evidence so far:** (a) Desktop: Videasy shows an explicit **"Iframe Sandbox Detected"** error page — the `sandbox` attribute added in `92c5b95` is CONFIRMED as the Videasy breakage. (b) Mobile on cellular: "player.videasy.net refused to connect" — likely the same cause, re-test after the fix. (c) Mobile ~412 px: source toolbar / Back button / mark-progress row overlap.
 
 ---
 
-## Phase 0 — Diagnose the mobile player failure (do first, blocks Phase 1 decisions)
+## Phase 0 — Per-source sandbox compatibility table (short — root cause already confirmed for Videasy)
 
-**Files:** none modified — diagnosis only.
+**Files:** none modified — verification only (a scratch HTML page outside the repo is fine).
 
 **Steps:**
-1. On the failing device, load the same title on **Wi-Fi vs cellular vs VPN**. If it loads on Wi-Fi but not cellular → carrier DNS block (hypothesis 2).
-2. Build a local test page with the same Videasy URL twice: once with the current `sandbox` attribute, once without. Load on the failing device via dev server. If sandboxed fails and unsandboxed works → sandbox regression (hypothesis 1).
-3. `curl -sI https://player.videasy.net/movie/<id>` — check `X-Frame-Options` / `Content-Security-Policy: frame-ancestors` (hypothesis 3).
-4. Repeat step 2 for VidSrc and 2Embed to build the per-source compatibility table.
-5. Record the verdict + evidence in `refdocs/changelog/DECISIONS.md`.
+1. For each of Videasy / VidSrc / 2Embed, load the embed URL in a test iframe with a **graduated sandbox ladder** and note the least-permissive tier that works:
+   - Tier 1 (current): `allow-scripts allow-forms allow-same-origin allow-presentation allow-modals`
+   - Tier 2: Tier 1 + `allow-popups`
+   - Tier 3: Tier 2 + `allow-top-navigation-by-user-activation`
+   - Tier 4: no `sandbox` attribute (provider rejects all sandboxing — expected for Videasy)
+2. After the Phase 1 fix deploys, re-test on the failing phone on cellular. If Videasy still shows "refused to connect" there, run the residual checks: Wi-Fi vs cellular vs VPN (carrier DNS block) and `curl -sI` for `X-Frame-Options`/`frame-ancestors`.
+3. Record the table + evidence in `refdocs/changelog/DECISIONS.md`.
 
-**Checkpoint:** root cause identified and written down; per-source sandbox compatibility table exists.
+**Checkpoint:** compatibility table exists; each source has an assigned tier.
 
-**Rollback:** n/a (no code changes). If a fast user-facing fix is needed before diagnosis completes, temporarily revert the `sandbox` attribute only (keep `allow`/`allowFullScreen` — the fullscreen fix is independent).
+**Rollback:** n/a (no code changes).
 
 ---
 
@@ -30,9 +33,7 @@
 - `apps/web/src/styles/global.css`
 
 **Steps:**
-1. Apply the Phase 0 outcome:
-   - Sandbox regression → add `sandboxSafe: false` to affected sources; render `sandbox` conditionally. Keep sandbox on every source that tolerates it.
-   - Carrier block → no iframe change; failover UX (step 2) is the fix. Optionally note a proxy decision (plan §5.3) for a later phase.
+1. Apply the Phase 0 table: add a per-source `sandbox` field to `PLAYER_SOURCES` (string = the source's working sandbox tier, `null` = render no `sandbox` attribute). MoviePage/TVPage read it when rendering the iframe. Videasy is expected to land at `null`; every source keeps `allow="fullscreen; autoplay; encrypted-media; picture-in-picture"` + `allowFullScreen` unconditionally. If carrier blocking is also confirmed on mobile, the failover UX (step 2) is the mitigation; note the proxy decision (plan §5.3) for a later phase.
 2. **Source failover banner:** start a ~8 s timer when the iframe `src` is set; clear it on iframe `load`. On timeout, show a dismissible banner over the player: "Source not loading? Try another" with the remaining `PLAYER_SOURCES` as one-tap chips. No auto-switching (an iframe `load` can fire even for a broken page, and auto-switch would fight the user mid-load).
 3. **Mobile layout pass** for the player detail pages at ≤768 px:
    - Player container full-width, `aspect-ratio: 16/9`, no fixed heights.
