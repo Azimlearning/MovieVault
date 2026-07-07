@@ -40,9 +40,9 @@ export function saveHomeLayout(order, visible) {
   storage.set("homeRowVisible", visible);
 }
 
-/** "carousel" (default) | "list" */
+/** "list" (default, Bento grid) | "carousel" */
 export function loadHomeViewMode() {
-  return storage.get("homeViewMode") || "carousel";
+  return storage.get("homeViewMode") || "list";
 }
 
 export function saveHomeViewMode(mode) {

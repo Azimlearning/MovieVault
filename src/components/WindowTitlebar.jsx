@@ -139,7 +139,7 @@ export default function WindowTitlebar() {
         {/* Close */}
         <TitlebarBtn
           onClick={close}
-          hoverBg="rgba(229,9,20,0.85)"
+          hoverBg="rgba(229,72,77,0.85)"
           title="Close"
         >
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">

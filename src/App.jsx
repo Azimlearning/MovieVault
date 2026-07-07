@@ -657,7 +657,7 @@ export default function App() {
   }, [fetchTrending]);
   useEffect(() => {
     // Accent colour
-    const accent = storage.get(STORAGE_KEYS.ACCENT_COLOR) || "red";
+    const accent = storage.get(STORAGE_KEYS.ACCENT_COLOR) || "amber";
     applyAccentColor(accent);
     // Font size
     const font = storage.get(STORAGE_KEYS.FONT_SIZE) || "normal";
@@ -667,9 +667,16 @@ export default function App() {
     // Compact mode
     const compact = !!storage.get(STORAGE_KEYS.COMPACT_MODE);
     document.body.classList.toggle("compact-mode", compact);
-    // Reduce animations
-    const noAnim = !!storage.get(STORAGE_KEYS.REDUCE_ANIMATIONS);
-    document.body.classList.toggle("no-anim", noAnim);
+    // Reduce animations — manual setting OR the OS-level accessibility preference
+    const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const applyNoAnim = () => {
+      const noAnim =
+        !!storage.get(STORAGE_KEYS.REDUCE_ANIMATIONS) || reducedMotionQuery.matches;
+      document.body.classList.toggle("no-anim", noAnim);
+    };
+    applyNoAnim();
+    reducedMotionQuery.addEventListener("change", applyNoAnim);
+    return () => reducedMotionQuery.removeEventListener("change", applyNoAnim);
   }, []);
   useEffect(() => {
     const goOnline = () => setOffline(false);
@@ -1473,7 +1480,7 @@ export default function App() {
               left: 0,
               right: 0,
               zIndex: 9999,
-              background: "rgba(229,9,20,0.92)",
+              background: "rgba(255,138,61,0.92)",
               backdropFilter: "blur(8px)",
               display: "flex",
               alignItems: "center",
@@ -1562,7 +1569,7 @@ export default function App() {
                     width: 14,
                     height: 14,
                     border: "2px solid var(--text3)",
-                    borderTopColor: "var(--red)",
+                    borderTopColor: "var(--accent)",
                     borderRadius: "50%",
                     animation: "spin 0.7s linear infinite",
                     flexShrink: 0,
@@ -1608,7 +1615,7 @@ export default function App() {
                       gap: 7,
                     }}
                   >
-                    <span style={{ color: "var(--red)", fontSize: 15 }}>
+                    <span style={{ color: "var(--accent)", fontSize: 15 }}>
                       🎬
                     </span>
                     New episode

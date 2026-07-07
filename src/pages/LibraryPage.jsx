@@ -430,7 +430,7 @@ export default function LibraryPage({
                           <span style={{ color: "var(--text3)" }}>{g.count} views ({pct}%)</span>
                         </div>
                         <div style={{ height: 6, background: "var(--surface3)", borderRadius: 3, overflow: "hidden" }}>
-                          <div style={{ height: "100%", width: `${pct}%`, background: "var(--red)", borderRadius: 3 }} />
+                          <div style={{ height: "100%", width: `${pct}%`, background: "var(--accent)", borderRadius: 3 }} />
                         </div>
                       </div>
                     );

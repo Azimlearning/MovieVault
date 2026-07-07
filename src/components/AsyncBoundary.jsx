@@ -105,7 +105,7 @@ export default function AsyncBoundary({
         <p style={{ margin: 0, color: "var(--text3)", fontSize: 13, maxWidth: 450, textAlign: "center", lineHeight: 1.5 }}>
           {errorMessage}
         </p>
-        <div style={{ fontSize: 11, color: "var(--red)", background: "rgba(229, 9, 20, 0.06)", border: "1px solid rgba(229, 9, 20, 0.15)", padding: "4px 10px", borderRadius: 4, fontFamily: "monospace" }}>
+        <div style={{ fontSize: 11, color: "var(--danger)", background: "rgba(229, 72, 77, 0.06)", border: "1px solid rgba(229, 72, 77, 0.15)", padding: "4px 10px", borderRadius: 4, fontFamily: "monospace" }}>
           Code: {errorCode}
         </div>
 

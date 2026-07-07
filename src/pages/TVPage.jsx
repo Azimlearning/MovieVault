@@ -289,7 +289,7 @@ const INJECT_SKIP_CONTROLS = `
     } else {
       btn.style.right = '24px';
     }
-    btn.onmouseenter = function() { btn.style.background = 'rgba(229,9,20,0.85)'; btn.style.borderColor = '#e5091466'; };
+    btn.onmouseenter = function() { btn.style.background = 'rgba(255,138,61,0.85)'; btn.style.borderColor = '#ff8a3d66'; };
     btn.onmouseleave = function() { btn.style.background = 'rgba(0,0,0,0.72)'; btn.style.borderColor = 'rgba(255,255,255,0.18)'; };
     btn.onclick = function(e) {
       e.stopPropagation();
@@ -2366,7 +2366,7 @@ export default function TVPage({
                       gap: 4
                     }}
                   >
-                    <span style={{ color: "var(--red)" }}>●</span>
+                    <span style={{ color: "var(--accent)" }}>●</span>
                     <span>Party Sync: +{storage.get("partySyncOffset") ?? 1.5}s</span>
                   </div>
                 )}
@@ -2674,7 +2674,7 @@ export default function TVPage({
                       !pipOpen &&
                       (webviewLoading || !!(isAsync && !resolvedPlayerUrl))
                     }
-                    style={pipOpen ? { color: "var(--red)" } : undefined}
+                    style={pipOpen ? { color: "var(--accent)" } : undefined}
                   >
                     <PopOutIcon />
                   </button>
@@ -2683,7 +2683,7 @@ export default function TVPage({
                     className="player-overlay-btn"
                     onClick={onToggleWatchParty}
                     title={partySession ? "Watch Party active" : "Start Watch Party"}
-                    style={partySession ? { color: "var(--red)" } : undefined}
+                    style={partySession ? { color: "var(--accent)" } : undefined}
                   >
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
                       <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
@@ -2759,7 +2759,7 @@ export default function TVPage({
                       style={{
                         color:
                           currentEpDownload.status === "downloading"
-                            ? "var(--red)"
+                            ? "var(--accent)"
                             : "#4caf50",
                       }}
                     >
@@ -2825,7 +2825,7 @@ export default function TVPage({
                         <div
                           style={{
                             height: "100%",
-                            background: "var(--red)",
+                            background: "var(--accent)",
                             borderRadius: 1,
                             width: `${(1 - autoNextCountdown / 15) * 100}%`,
                             transition: "width 1s linear",
@@ -2887,8 +2887,8 @@ export default function TVPage({
                       animation: "slideDown 0.2s ease",
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = "rgba(229,9,20,0.85)";
-                      e.currentTarget.style.borderColor = "rgba(229,9,20,0.5)";
+                      e.currentTarget.style.background = "rgba(255,138,61,0.85)";
+                      e.currentTarget.style.borderColor = "rgba(255,138,61,0.5)";
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = "rgba(0,0,0,0.72)";
@@ -3323,15 +3323,15 @@ const EpisodeCard = memo(function EpisodeCard({
               style={{
                 borderColor:
                   epDownload.status === "downloading"
-                    ? "rgba(229,9,20,0.5)"
+                    ? "rgba(255,138,61,0.5)"
                     : "rgba(72,199,116,0.5)",
                 color:
                   epDownload.status === "downloading"
-                    ? "var(--red)"
+                    ? "var(--accent)"
                     : "#4caf50",
                 background:
                   epDownload.status === "downloading"
-                    ? "rgba(229,9,20,0.12)"
+                    ? "rgba(255,138,61,0.12)"
                     : "rgba(72,199,116,0.18)",
               }}
               onClick={(e) => {

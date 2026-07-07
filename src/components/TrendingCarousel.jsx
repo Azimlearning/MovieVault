@@ -375,7 +375,7 @@ export default function TrendingCarousel({
         {titleHighlight ? (
           <>
             {title}&nbsp;
-            <span style={{ color: "var(--red)" }}>{titleHighlight}</span>
+            <span style={{ color: "var(--accent)" }}>{titleHighlight}</span>
           </>
         ) : (
           title

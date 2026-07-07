@@ -113,11 +113,28 @@ export default function OnePacePage({ arcs, progress, onSelectArc }) {
     return stats;
   }, [arcs, progress]);
 
+  // Voyage map: one dot per arc, in story order, along a winding dotted path
+  const journeyMap = useMemo(() => {
+    if (!arcs || arcs.length === 0) return null;
+    const spacing = 56;
+    const amplitude = 16;
+    const points = arcs.map((arc, i) => ({
+      arc,
+      x: 22 + i * spacing,
+      y: 36 + Math.sin(i * 0.7) * amplitude,
+    }));
+    const width = points[points.length - 1].x + 22;
+    const pathD = points
+      .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+      .join(" ");
+    return { points, width, pathD };
+  }, [arcs]);
+
   return (
     <div style={{ padding: "30px 40px", color: "var(--text)" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 24 }}>
-        <StrawHatIcon size={36} color="var(--red)" />
+        <StrawHatIcon size={36} color="var(--accent)" />
         <div>
           <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, fontFamily: "var(--font-title, Outfit)" }}>
             One Pace
@@ -127,6 +144,51 @@ export default function OnePacePage({ arcs, progress, onSelectArc }) {
           </p>
         </div>
       </div>
+
+      {/* Voyage Map — treasure-map style progress across all arcs */}
+      {journeyMap && (
+        <div className="onepace-journey-map-wrap">
+          <div className="onepace-journey-map-title">Your Voyage</div>
+          <div className="onepace-journey-map-scroll">
+            <svg
+              width={journeyMap.width}
+              height={72}
+              viewBox={`0 0 ${journeyMap.width} 72`}
+            >
+              <path d={journeyMap.pathD} className="onepace-journey-map-path" fill="none" />
+              {journeyMap.points.map(({ arc, x, y }) => {
+                const stats = arcStats[arc.id] || { percent: 0 };
+                const completed = stats.percent >= 100;
+                const started = stats.percent > 0 && !completed;
+                return (
+                  <g
+                    key={arc.id}
+                    className="onepace-journey-dot-group"
+                    onClick={() => onSelectArc(arc)}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${arc.name} — ${stats.percent}% watched`}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onSelectArc(arc);
+                      }
+                    }}
+                  >
+                    <title>{arc.name} — {stats.percent}%</title>
+                    <circle
+                      cx={x}
+                      cy={y}
+                      r={completed ? 7 : 6}
+                      className={`onepace-journey-dot${completed ? " onepace-journey-dot--completed" : started ? " onepace-journey-dot--started" : ""}`}
+                    />
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+        </div>
+      )}
 
       {/* Saga Filters */}
       <div
@@ -150,9 +212,9 @@ export default function OnePacePage({ arcs, progress, onSelectArc }) {
               style={{
                 padding: "8px 16px",
                 borderRadius: 20,
-                border: active ? "1px solid var(--red)" : "1px solid var(--border)",
-                background: active ? "rgba(229,9,20,0.15)" : "var(--surface2)",
-                color: active ? "var(--red)" : "var(--text2)",
+                border: active ? "1px solid var(--accent)" : "1px solid var(--border)",
+                background: active ? "rgba(255,138,61,0.15)" : "var(--surface2)",
+                color: active ? "var(--accent)" : "var(--text2)",
                 fontSize: 13,
                 fontWeight: active ? 600 : 400,
                 cursor: "pointer",
@@ -209,7 +271,7 @@ export default function OnePacePage({ arcs, progress, onSelectArc }) {
                 onMouseEnter={e => {
                   e.currentTarget.style.transform = "translateY(-4px)";
                   e.currentTarget.style.boxShadow = "0 12px 24px rgba(0,0,0,0.3)";
-                  e.currentTarget.style.borderColor = "var(--red, #e50914)";
+                  e.currentTarget.style.borderColor = "var(--accent, #ff8a3d)";
                 }}
                 onMouseLeave={e => {
                   e.currentTarget.style.transform = "translateY(0)";
@@ -350,7 +412,7 @@ export default function OnePacePage({ arcs, progress, onSelectArc }) {
                       <div style={{ background: "var(--surface3)", height: 4, borderRadius: 2, overflow: "hidden" }}>
                         <div
                           style={{
-                            background: "var(--red, #e50914)",
+                            background: "var(--accent, #ff8a3d)",
                             height: "100%",
                             width: `${stats.percent}%`
                           }}

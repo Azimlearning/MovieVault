@@ -298,7 +298,7 @@ export default function HeroBanner({
         {(rating || year) && (
           <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 18 }}>
             {rating && (
-              <span style={{ display: "flex", alignItems: "center", gap: 4, color: "#f5c518", fontSize: 13, fontWeight: 700 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--gold)", fontSize: 13, fontWeight: 700 }}>
                 <StarIcon size={12} />
                 {rating}
               </span>
@@ -339,7 +339,7 @@ export default function HeroBanner({
               border: "1px solid rgba(255,255,255,0.18)",
               color: "#fff",
               padding: "8px 18px",
-              borderRadius: 6,
+              borderRadius: "var(--radius)",
               fontSize: 13,
               fontWeight: 600,
               cursor: "pointer",

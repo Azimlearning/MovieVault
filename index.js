@@ -1,4 +1,4 @@
-// -- Streambert main process entry point ---------------------------------------
+// -- MovieVault main process entry point ---------------------------------------
 // Responsible for: window creation, session setup, ad-blocking, scheduled
 // backup trigger, and app lifecycle. All heavy IPC logic lives in src/ipc/.
 
@@ -218,9 +218,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     backgroundColor: "#0a0a0a",
-    icon: process.platform === "linux"
-      ? path.join(__dirname, "public/sized/256x256.png")
-      : undefined,
+    icon: path.join(__dirname, "public/brand/icon-256.png"),
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "hidden",
     frame: process.platform !== "win32",
     webPreferences: {
@@ -280,8 +278,10 @@ function createWindow() {
 
   const logFile = path.join(__dirname, "renderer-debug.log");
   fs.writeFileSync(logFile, `=== Start Log: ${new Date().toISOString()} ===\n`);
-  mainWindow.webContents.on("console-message", (event, level, message, line, sourceId) => {
-    fs.appendFileSync(logFile, `[Renderer Console] LEVEL ${level}: ${message} (${path.basename(sourceId)}:${line})\n`);
+  mainWindow.webContents.on("console-message", (event) => {
+    const { level, message, lineNumber, sourceId } = event;
+    const src = sourceId ? path.basename(sourceId) : "unknown";
+    fs.appendFileSync(logFile, `[Renderer Console] LEVEL ${level}: ${message} (${src}:${lineNumber})\n`);
   });
 
   mainWindow.loadFile(path.join(__dirname, "dist/index.html"));

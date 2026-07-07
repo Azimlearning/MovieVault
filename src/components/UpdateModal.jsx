@@ -83,7 +83,7 @@ function inlineFormat(text) {
               window.electron?.openExternal(mm[2]);
             }}
             style={{
-              color: "var(--red)",
+              color: "var(--accent)",
               textDecoration: "underline",
               cursor: "pointer",
             }}
@@ -103,7 +103,7 @@ function inlineFormat(text) {
             window.electron?.openExternal(`https://github.com/${username}`);
           }}
           style={{
-            color: "var(--red)",
+            color: "var(--accent)",
             textDecoration: "none",
             fontWeight: 500,
             cursor: "pointer",
@@ -130,7 +130,7 @@ function inlineFormat(text) {
             window.electron?.openExternal(raw);
           }}
           style={{
-            color: "var(--red)",
+            color: "var(--accent)",
             textDecoration: "underline",
             cursor: "pointer",
             fontSize: "0.95em",
@@ -239,7 +239,7 @@ function renderChangelog(text) {
         <div
           key={key++}
           style={{
-            borderLeft: "3px solid var(--red)",
+            borderLeft: "3px solid var(--accent)",
             paddingLeft: 10,
             margin: "4px 0",
             color: "var(--text3)",
@@ -347,7 +347,7 @@ function renderChangelog(text) {
         >
           <span
             style={{
-              color: "var(--red)",
+              color: "var(--accent)",
               flexShrink: 0,
               fontWeight: 600,
               minWidth: 18,
@@ -376,7 +376,7 @@ function renderChangelog(text) {
             marginBottom: 2,
           }}
         >
-          <span style={{ color: "var(--red)", flexShrink: 0, marginTop: 1 }}>
+          <span style={{ color: "var(--accent)", flexShrink: 0, marginTop: 1 }}>
             •
           </span>
           <span>{inlineFormat(line.slice(2))}</span>
@@ -581,7 +581,7 @@ export default function UpdateModal({
                     window.electron?.openExternal(url);
                   }}
                   style={{
-                    color: "var(--red)",
+                    color: "var(--accent)",
                     fontWeight: 600,
                     textDecoration: "none",
                     cursor: "pointer",
@@ -675,7 +675,7 @@ export default function UpdateModal({
             <div
               style={{
                 fontSize: 12,
-                color: "var(--red)",
+                color: "var(--danger)",
                 marginBottom: 12,
                 display: "flex",
                 alignItems: "center",
@@ -699,7 +699,7 @@ export default function UpdateModal({
                   e.preventDefault();
                   window.electron?.openExternal(url);
                 }}
-                style={{ color: "var(--red)", cursor: "pointer" }}
+                style={{ color: "var(--accent)", cursor: "pointer" }}
               >
                 GitHub releases page
               </a>{" "}
@@ -741,7 +741,7 @@ export default function UpdateModal({
                   style={{
                     height: "100%",
                     width: phase === "installing" ? "100%" : `${progress}%`,
-                    background: "var(--red)",
+                    background: "var(--accent)",
                     borderRadius: 2,
                     transition: "width 0.3s ease",
                     animation:
@@ -757,7 +757,7 @@ export default function UpdateModal({
           {/* Error */}
           {phase === "error" && (
             <div
-              style={{ fontSize: 13, color: "var(--red)", marginBottom: 12 }}
+              style={{ fontSize: 13, color: "var(--danger)", marginBottom: 12 }}
             >
               ✕ {errorMsg}
               <span style={{ marginLeft: 10 }}>
@@ -768,7 +768,7 @@ export default function UpdateModal({
                     window.electron?.openExternal(url);
                   }}
                   style={{
-                    color: "var(--red)",
+                    color: "var(--accent)",
                     textDecoration: "underline",
                     cursor: "pointer",
                   }}
@@ -821,8 +821,8 @@ export default function UpdateModal({
                   onClick={handleInstall}
                   style={{
                     background: canInstall
-                      ? "var(--red)"
-                      : "rgba(229,9,20,0.3)",
+                      ? "var(--accent)"
+                      : "rgba(255,138,61,0.3)",
                     color: "#fff",
                     border: "none",
                     fontWeight: 600,

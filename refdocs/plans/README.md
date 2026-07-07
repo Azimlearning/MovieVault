@@ -19,4 +19,4 @@
 |------|-------------|--------|
 | [IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md) | V1 Electron app improvements roadmap | Draft |
 | [IMPROVEMENT_PLAN_V2.md](IMPROVEMENT_PLAN_V2.md) | V2 PRD — UX polish, One Pace, Watch Party | Shipped |
-| [PLAN_UI_REDESIGN_V3.md](PLAN_UI_REDESIGN_V3.md) | V3 — full visual redesign (new palette, Bento cards, new app icon) | Draft |
+| [PLAN_UI_REDESIGN_V3.md](PLAN_UI_REDESIGN_V3.md) | V3 — full visual redesign (new palette, Bento cards, new app icon) | Shipped (Tier 1; Tier 2 spells optional) |

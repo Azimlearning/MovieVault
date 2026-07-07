@@ -292,6 +292,71 @@ export default function OnePacePlayer({
     return () => document.removeEventListener("fullscreenchange", handler);
   }, []);
 
+  // Bias-lighting: sample the current video frame's average color and tint
+  // the letterbox/pillarbox margins around it (poor man's Ambilight).
+  // Skipped entirely under prefers-reduced-motion (stays plain black).
+  useEffect(() => {
+    if (!isPlaying) return;
+    const prefersReducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    if (prefersReducedMotion) return;
+
+    const video = videoRef.current;
+    const container = containerRef.current;
+    if (!video || !container || typeof video.requestVideoFrameCallback !== "function") {
+      return;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 16;
+    canvas.height = 9;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+    let cancelled = false;
+    let handle = null;
+    let lastSample = 0;
+    const SAMPLE_INTERVAL_MS = 700;
+
+    const sampleFrame = (now) => {
+      if (cancelled) return;
+      if (now - lastSample >= SAMPLE_INTERVAL_MS) {
+        lastSample = now;
+        try {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          let r = 0, g = 0, b = 0;
+          const pixelCount = data.length / 4;
+          for (let i = 0; i < data.length; i += 4) {
+            r += data[i];
+            g += data[i + 1];
+            b += data[i + 2];
+          }
+          r = Math.round((r / pixelCount) * 0.4);
+          g = Math.round((g / pixelCount) * 0.4);
+          b = Math.round((b / pixelCount) * 0.4);
+          container.style.setProperty("--bias-bg", `rgb(${r}, ${g}, ${b})`);
+        } catch {
+          // Cross-origin-tainted canvas or decode error — bail out quietly,
+          // container just stays plain black.
+          cancelled = true;
+          return;
+        }
+      }
+      handle = video.requestVideoFrameCallback(sampleFrame);
+    };
+
+    handle = video.requestVideoFrameCallback(sampleFrame);
+
+    return () => {
+      cancelled = true;
+      if (handle != null && typeof video.cancelVideoFrameCallback === "function") {
+        video.cancelVideoFrameCallback(handle);
+      }
+      container.style.removeProperty("--bias-bg");
+    };
+  }, [isPlaying]);
+
   // Keyboard shortcuts (space play, arrows seek, etc.)
   useEffect(() => {
     const handler = (e) => {
@@ -427,7 +492,7 @@ export default function OnePacePlayer({
             gap: 4
           }}
         >
-          <span style={{ color: "var(--red)" }}>●</span>
+          <span style={{ color: "var(--accent)" }}>●</span>
           <span>Party Sync: +{storage.get("partySyncOffset") ?? 1.5}s</span>
         </div>
       )}
@@ -666,7 +731,7 @@ export default function OnePacePlayer({
                 onClick={onToggleWatchParty}
                 className="onepace-control-btn"
                 title={partySession ? "Watch Party active" : "Start Watch Party"}
-                style={partySession ? { color: "var(--red)" } : undefined}
+                style={partySession ? { color: "var(--accent)" } : undefined}
               >
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
                   <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />

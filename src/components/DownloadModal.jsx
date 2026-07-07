@@ -184,7 +184,7 @@ export function SubtitleBrowser({
             <div
               style={{
                 padding: "16px 20px",
-                color: "var(--red)",
+                color: "var(--danger)",
                 fontSize: 13,
               }}
             >
@@ -223,7 +223,7 @@ export function SubtitleBrowser({
                     cursor: "pointer",
                     borderBottom: "1px solid var(--border)",
                     background: isSelected
-                      ? "rgba(229,9,20,0.08)"
+                      ? "rgba(255,138,61,0.08)"
                       : "transparent",
                     display: "flex",
                     alignItems: "flex-start",
@@ -236,7 +236,7 @@ export function SubtitleBrowser({
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = isSelected
-                      ? "rgba(229,9,20,0.08)"
+                      ? "rgba(255,138,61,0.08)"
                       : "transparent";
                   }}
                 >
@@ -246,8 +246,8 @@ export function SubtitleBrowser({
                       width: 16,
                       height: 16,
                       borderRadius: 3,
-                      border: `2px solid ${isSelected ? "var(--red)" : "var(--border)"}`,
-                      background: isSelected ? "var(--red)" : "transparent",
+                      border: `2px solid ${isSelected ? "var(--accent)" : "var(--border)"}`,
+                      background: isSelected ? "var(--accent)" : "transparent",
                       flexShrink: 0,
                       marginTop: 2,
                       display: "flex",
@@ -612,7 +612,7 @@ export default function DownloadModal({
                 "Choose where downloaded videos should be saved:"
               ) : (
                 <>
-                  <span style={{ color: "var(--red)", fontWeight: 600 }}>
+                  <span style={{ color: "var(--danger)", fontWeight: 600 }}>
                     No download folder set.
                   </span>
                   <br />
@@ -793,7 +793,7 @@ export default function DownloadModal({
                       borderRadius: 10,
                       border: "1px solid var(--border)",
                       cursor: "pointer",
-                      background: subEnabled ? "var(--red)" : "var(--surface2)",
+                      background: subEnabled ? "var(--accent)" : "var(--surface2)",
                       position: "relative",
                       transition: "background 0.2s",
                       flexShrink: 0,
@@ -841,7 +841,7 @@ export default function DownloadModal({
                         >
                           <span>
                             <span
-                              style={{ color: "var(--red)", fontWeight: 600 }}
+                              style={{ color: "var(--danger)", fontWeight: 600 }}
                             >
                               No subtitle API key set.
                             </span>{" "}
@@ -888,7 +888,7 @@ export default function DownloadModal({
                       <div
                         style={{
                           fontSize: 12,
-                          color: "var(--red)",
+                          color: "var(--danger)",
                           display: "flex",
                           gap: 8,
                           alignItems: "center",

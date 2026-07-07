@@ -1,7 +1,7 @@
-export const StreambertLogo = ({ style }) => (
+export const AppLogo = ({ style }) => (
   <img
-    src="./logo.svg"
-    alt="Streambert"
+    src="./brand/icon-master.svg"
+    alt="MovieVault"
     width="44"
     height="44"
     style={{ width: "100%", height: "100%", display: "block", ...style }}
@@ -248,7 +248,7 @@ export const SourceIcon = () => (
   </svg>
 );
 
-export const WarningIcon = ({ size = 24, color = "var(--red)" }) => (
+export const WarningIcon = ({ size = 24, color = "var(--danger)" }) => (
   <svg
     width={size}
     height={size}
@@ -365,7 +365,7 @@ export const PopOutIcon = ({ size = 16 }) => (
 export const StrawHatIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M6 14C6 8 8 6 12 6C16 6 18 8 18 14" fill="currentColor" fillOpacity="0.2" />
-    <path d="M6 12H18" stroke="var(--red, #e50914)" strokeWidth="3" />
+    <path d="M6 12H18" stroke="var(--danger, #e5484d)" strokeWidth="3" />
     <path d="M2 14C7 16 17 16 22 14" />
   </svg>
 );

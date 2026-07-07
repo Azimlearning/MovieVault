@@ -372,7 +372,7 @@ export default function SearchModal({ apiKey, onSelect, onClose, offline, initia
                   key={`local_${r.media_type}_${r.id}`}
                   className="search-result"
                   onClick={() => handleSelect(r)}
-                  style={{ borderLeft: "2px solid var(--red)" }}
+                  style={{ borderLeft: "2px solid var(--accent)" }}
                 >
                   <img
                     src={

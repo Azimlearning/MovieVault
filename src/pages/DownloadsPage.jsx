@@ -694,7 +694,7 @@ const ActiveCard = memo(function ActiveCard({ dl, onDelete, onSelect }) {
             className={`dl-card__name${onSelect ? " dl-card__title--clickable" : ""}`}
             onClick={onSelect || undefined}
             onMouseEnter={(e) => {
-              if (onSelect) e.currentTarget.style.color = "var(--red)";
+              if (onSelect) e.currentTarget.style.color = "var(--accent)";
             }}
             onMouseLeave={(e) => {
               if (onSelect) e.currentTarget.style.color = "";
@@ -967,7 +967,7 @@ const LocalFileCard = memo(function LocalFileCard({
               className={`dl-card__title${onSelect ? " dl-card__title--clickable" : ""}`}
               onClick={onSelect || undefined}
               onMouseEnter={(e) => {
-                if (onSelect) e.currentTarget.style.color = "var(--red)";
+                if (onSelect) e.currentTarget.style.color = "var(--accent)";
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.color = "";
@@ -1149,7 +1149,7 @@ const LocalFileCard = memo(function LocalFileCard({
                           onChange={handleSliderChange}
                           style={{
                             width: "100%",
-                            accentColor: "var(--red)",
+                            accentColor: "var(--accent)",
                             cursor: "pointer",
                             height: 3,
                           }}
@@ -1189,7 +1189,7 @@ const LocalFileCard = memo(function LocalFileCard({
                           gap: 2,
                         }}
                         onFocus={(e) => {
-                          e.currentTarget.style.borderColor = "var(--red)";
+                          e.currentTarget.style.borderColor = "var(--accent)";
                         }}
                         onBlur={(e) => {
                           if (!e.currentTarget.contains(e.relatedTarget))
@@ -1342,7 +1342,7 @@ const LocalFileCard = memo(function LocalFileCard({
               className="btn btn-ghost dl-btn--sm"
               onClick={onOpenLog}
               title="Open error log"
-              style={{ color: "var(--red)", fontSize: 11 }}
+              style={{ color: "var(--danger)", fontSize: 11 }}
             >
               View Log
             </button>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { StreambertLogo, PlayIcon } from "./Icons";
+import { AppLogo, PlayIcon } from "./Icons";
 
 const TMDB_BASE = "https://api.themoviedb.org/3";
 
@@ -119,7 +119,7 @@ export default function SetupScreen({ onSave, onSkip }) {
     <div className="apikey-modal">
       <div className="apikey-box">
         <div className="apikey-logo">
-          <StreambertLogo />
+          <AppLogo />
         </div>
         <div className="apikey-title">MOVIEVAULT</div>
         <p className="apikey-sub">
@@ -157,7 +157,7 @@ export default function SetupScreen({ onSave, onSkip }) {
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           style={{
-            borderColor: error ? "#f44336" : focused ? "var(--red)" : undefined,
+            borderColor: error ? "var(--danger)" : focused ? "var(--accent)" : undefined,
           }}
         />
 

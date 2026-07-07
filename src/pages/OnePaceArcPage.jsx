@@ -46,7 +46,7 @@ export default function OnePaceArcPage({ arcHeader, progress, onBack, onPlayEpis
         <button onClick={onBack} className="btn btn-ghost" style={{ marginBottom: 20 }}>
           <BackIcon /> Back to Arcs
         </button>
-        <div style={{ color: "var(--red)", fontSize: 16 }}>⚠ {error || "Arc details unavailable"}</div>
+        <div style={{ color: "var(--danger)", fontSize: 16 }}>⚠ {error || "Arc details unavailable"}</div>
       </div>
     );
   }
@@ -72,7 +72,7 @@ export default function OnePaceArcPage({ arcHeader, progress, onBack, onPlayEpis
           marginBottom: 20,
           transition: "color 0.15s"
         }}
-        onMouseEnter={e => e.currentTarget.style.color = "var(--red)"}
+        onMouseEnter={e => e.currentTarget.style.color = "var(--accent)"}
         onMouseLeave={e => e.currentTarget.style.color = "var(--text2)"}
       >
         <BackIcon size={14} /> Back to Arcs
@@ -210,7 +210,7 @@ export default function OnePaceArcPage({ arcHeader, progress, onBack, onPlayEpis
                     transition: "border-color 0.2s, background-color 0.2s"
                   }}
                   onMouseEnter={e => {
-                    e.currentTarget.style.borderColor = "var(--red, #e50914)";
+                    e.currentTarget.style.borderColor = "var(--accent, #ff8a3d)";
                     e.currentTarget.style.backgroundColor = "var(--surface2)";
                   }}
                   onMouseLeave={e => {
@@ -254,14 +254,14 @@ export default function OnePaceArcPage({ arcHeader, progress, onBack, onPlayEpis
                     >
                       <div
                         style={{
-                          background: "var(--red)",
+                          background: "var(--accent)",
                           borderRadius: "50%",
                           width: 44,
                           height: 44,
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          boxShadow: "0 4px 12px rgba(229,9,20,0.4)"
+                          boxShadow: "0 4px 12px rgba(255,138,61,0.4)"
                         }}
                       >
                         <PlayIcon size={20} color="#fff" />
@@ -282,7 +282,7 @@ export default function OnePaceArcPage({ arcHeader, progress, onBack, onPlayEpis
                       >
                         <div
                           style={{
-                            background: isWatched ? "#48c774" : "var(--red, #e50914)",
+                            background: isWatched ? "#48c774" : "var(--accent, #ff8a3d)",
                             height: "100%",
                             width: `${pct}%`
                           }}
@@ -300,7 +300,7 @@ export default function OnePaceArcPage({ arcHeader, progress, onBack, onPlayEpis
                           fontSize: 9,
                           fontWeight: 700,
                           textTransform: "uppercase",
-                          background: "var(--red)",
+                          background: "var(--accent)",
                           color: "#fff",
                           padding: "2px 6px",
                           borderRadius: 3

@@ -389,7 +389,7 @@ export default function SubtitleDownloaderModal({
                 }}
               >
                 <span>
-                  <span style={{ color: "var(--red)", fontWeight: 600 }}>
+                  <span style={{ color: "var(--danger)", fontWeight: 600 }}>
                     No subtitle API key set.
                   </span>{" "}
                   Add/Generate a Wyzie or SubDL key in Settings to search and
@@ -436,7 +436,7 @@ export default function SubtitleDownloaderModal({
               <div
                 style={{
                   padding: "16px 20px",
-                  color: "var(--red)",
+                  color: "var(--danger)",
                   fontSize: 13,
                 }}
               >
@@ -484,7 +484,7 @@ export default function SubtitleDownloaderModal({
                       background: alreadyHave
                         ? "rgba(255,255,255,0.01)"
                         : isSelected
-                          ? "rgba(229,9,20,0.07)"
+                          ? "rgba(255,138,61,0.07)"
                           : "transparent",
                       display: "flex",
                       alignItems: "flex-start",
@@ -500,7 +500,7 @@ export default function SubtitleDownloaderModal({
                       e.currentTarget.style.background = alreadyHave
                         ? "rgba(255,255,255,0.01)"
                         : isSelected
-                          ? "rgba(229,9,20,0.07)"
+                          ? "rgba(255,138,61,0.07)"
                           : "transparent";
                     }}
                   >
@@ -510,11 +510,11 @@ export default function SubtitleDownloaderModal({
                         width: 15,
                         height: 15,
                         borderRadius: 3,
-                        border: `2px solid ${alreadyHave ? "var(--border)" : isSelected ? "var(--red)" : "var(--border)"}`,
+                        border: `2px solid ${alreadyHave ? "var(--border)" : isSelected ? "var(--accent)" : "var(--border)"}`,
                         background: alreadyHave
                           ? "var(--surface2)"
                           : isSelected
-                            ? "var(--red)"
+                            ? "var(--accent)"
                             : "transparent",
                         flexShrink: 0,
                         marginTop: 3,
@@ -656,12 +656,12 @@ export default function SubtitleDownloaderModal({
                       : "Select subtitles above"}
                 </button>
                 {!dl.filePath && (
-                  <span style={{ fontSize: 12, color: "var(--red)" }}>
+                  <span style={{ fontSize: 12, color: "var(--danger)" }}>
                     No file path, needs completed download
                   </span>
                 )}
                 {dlError && (
-                  <span style={{ fontSize: 12, color: "var(--red)" }}>
+                  <span style={{ fontSize: 12, color: "var(--danger)" }}>
                     ⚠ {dlError}
                   </span>
                 )}

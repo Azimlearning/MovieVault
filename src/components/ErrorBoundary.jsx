@@ -41,8 +41,8 @@ export default class ErrorBoundary extends Component {
             width: 64,
             height: 64,
             borderRadius: "50%",
-            background: "rgba(229,9,20,0.12)",
-            border: "1px solid rgba(229,9,20,0.3)",
+            background: "rgba(229,72,77,0.12)",
+            border: "1px solid rgba(229,72,77,0.3)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -79,9 +79,9 @@ export default class ErrorBoundary extends Component {
           <pre
             style={{
               fontSize: 12,
-              color: "rgba(229,9,20,0.8)",
-              background: "rgba(229,9,20,0.06)",
-              border: "1px solid rgba(229,9,20,0.2)",
+              color: "rgba(229,72,77,0.8)",
+              background: "rgba(229,72,77,0.06)",
+              border: "1px solid rgba(229,72,77,0.2)",
               borderRadius: 8,
               padding: "12px 16px",
               maxWidth: 600,
@@ -113,7 +113,7 @@ export default class ErrorBoundary extends Component {
           <button
             onClick={() => window.location.reload()}
             style={{
-              background: "rgba(229,9,20,0.85)",
+              background: "rgba(229,72,77,0.85)",
               border: "none",
               borderRadius: 8,
               color: "#fff",

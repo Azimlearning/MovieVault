@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, memo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import { createPortal } from "react-dom";
 import { imgUrl, isAnimeContent, tmdbFetch } from "../utils/api";
 import Skeleton from "./Skeleton";
@@ -11,6 +11,46 @@ import {
   RatingLockIcon,
 } from "./Icons";
 
+// Module-level cache: poster URL -> Promise<"r, g, b" | null>, shared across
+// every MediaCard instance/remount so each poster is only ever sampled once.
+const dominantColorCache = new Map();
+
+function sampleDominantColor(url) {
+  if (!url) return Promise.resolve(null);
+  if (dominantColorCache.has(url)) return dominantColorCache.get(url);
+
+  const promise = new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 8;
+        canvas.height = 12;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        let r = 0, g = 0, b = 0;
+        const count = data.length / 4;
+        for (let i = 0; i < data.length; i += 4) {
+          r += data[i];
+          g += data[i + 1];
+          b += data[i + 2];
+        }
+        resolve(`${Math.round(r / count)}, ${Math.round(g / count)}, ${Math.round(b / count)}`);
+      } catch {
+        // Cross-origin-tainted canvas or decode error — degrade gracefully
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+
+  dominantColorCache.set(url, promise);
+  return promise;
+}
+
 const MediaCard = memo(function MediaCard({
   item,
   onClick,
@@ -22,6 +62,7 @@ const MediaCard = memo(function MediaCard({
   restricted,
   onRemove,
   apiKey,
+  featured,
 }) {
   const title = item.title || item.name;
   const year = (item.release_date || item.first_air_date || "").slice(0, 4);
@@ -57,6 +98,50 @@ const MediaCard = memo(function MediaCard({
 
   // For TV series cards without a specific episode, watched marking is disabled
   const canMarkWatched = !isTV || (item.season != null && item.episode != null);
+
+  const prefersReducedMotion = useMemo(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    [],
+  );
+
+  // Ambient color bleed — sample the poster's dominant color once and use it
+  // as a soft hover glow (--card-glow-color), instead of a flat shadow.
+  useEffect(() => {
+    if (!item.poster_path) return;
+    let cancelled = false;
+    const url = imgUrl(item.poster_path, "w92");
+    sampleDominantColor(url).then((rgb) => {
+      if (cancelled || !rgb || !cardRef.current) return;
+      cardRef.current.style.setProperty("--card-glow-color", `rgba(${rgb}, 0.45)`);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [item.poster_path]);
+
+  // Poster-tilt parallax — card tilts toward the cursor on hover.
+  // GPU-accelerated (transform only), skipped under prefers-reduced-motion.
+  const handleCardMouseMove = useCallback(
+    (e) => {
+      if (prefersReducedMotion) return;
+      const el = cardRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const px = (e.clientX - rect.left) / rect.width - 0.5;
+      const py = (e.clientY - rect.top) / rect.height - 0.5;
+      const maxTilt = 8;
+      const rotateY = px * maxTilt * 2;
+      const rotateX = -py * maxTilt * 2;
+      el.style.transform = `perspective(900px) rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg) scale(1.06)`;
+    },
+    [prefersReducedMotion],
+  );
+
+  const resetCardTilt = useCallback(() => {
+    if (cardRef.current) cardRef.current.style.transform = "";
+  }, []);
 
   const openMenu = useCallback(
     (e) => {
@@ -139,7 +224,8 @@ const MediaCard = memo(function MediaCard({
       hoverTimerRef.current = null;
     }
     setShowPopout(false);
-  }, []);
+    resetCardTilt();
+  }, [resetCardTilt]);
 
   const handleFocus = useCallback(
     (e) => {
@@ -293,7 +379,7 @@ const MediaCard = memo(function MediaCard({
     <>
       <div
         ref={cardRef}
-        className={`card${isWatched ? " ep-watched" : ""}${isUnreleased ? " card--unreleased" : ""}`}
+        className={`card${isWatched ? " ep-watched" : ""}${isUnreleased ? " card--unreleased" : ""}${featured ? " card--featured" : ""}`}
         onClick={() => {
           setShowPopout(false);
           onClick?.();
@@ -303,6 +389,7 @@ const MediaCard = memo(function MediaCard({
         onKeyDown={handleKeyDown}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
+        onMouseMove={handleCardMouseMove}
         onFocus={handleFocus}
         onBlur={handleBlur}
       >
@@ -398,7 +485,7 @@ const MediaCard = memo(function MediaCard({
                 onRemove(watchedKey);
                 setMenu(null);
               }}
-              style={{ color: "var(--red)" }}
+              style={{ color: "var(--danger)" }}
             >
               ✕ Remove from Continue
             </button>

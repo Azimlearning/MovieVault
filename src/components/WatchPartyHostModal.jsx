@@ -152,7 +152,7 @@ export default function WatchPartyHostModal({ session, onEndParty, onClose, onKi
                     style={{
                       fontSize: 36,
                       fontWeight: 800,
-                      color: "var(--red)",
+                      color: "var(--accent)",
                       letterSpacing: "0.1em",
                       fontFamily: "var(--font-title, Outfit)",
                       background: "var(--surface2)",
@@ -210,7 +210,7 @@ export default function WatchPartyHostModal({ session, onEndParty, onClose, onKi
                         padding: 4,
                         borderRadius: 4
                       }}
-                      onMouseEnter={e => e.currentTarget.style.color = "var(--red)"}
+                      onMouseEnter={e => e.currentTarget.style.color = "var(--danger)"}
                       onMouseLeave={e => e.currentTarget.style.color = "var(--text3)"}
                       title="Kick guest"
                     >
@@ -232,7 +232,7 @@ export default function WatchPartyHostModal({ session, onEndParty, onClose, onKi
               }
             }}
             className="btn btn-secondary"
-            style={{ padding: "8px 16px", color: "var(--red)", border: "1px solid rgba(229,9,20,0.3)" }}
+            style={{ padding: "8px 16px", color: "var(--danger)", border: "1px solid rgba(229,72,77,0.3)" }}
           >
             End Party
           </button>

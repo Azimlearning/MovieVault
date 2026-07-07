@@ -6,6 +6,8 @@ import { imgUrl, tmdbFetch } from "../utils/api";
 import AsyncBoundary from "../components/AsyncBoundary";
 import HomeSkeleton from "../components/skeletons/HomeSkeleton";
 import HeroBanner from "../components/HeroBanner";
+import HeroQuickPicks from "../components/HeroQuickPicks";
+import GenreBrowser from "../components/GenreBrowser";
 import { useRatings, getRatingForItem } from "../utils/useRatings";
 import { isRestricted } from "../utils/ageRating";
 import { storage } from "../utils/storage";
@@ -243,17 +245,30 @@ export default function HomePage({
   return (
     <div className="fade-in">
       <AsyncBoundary state={boundaryState} onRetry={onRetry} loadingComponent={<HomeSkeleton />}>
-        {/* ── Hero Banner (always first) ── */}
+        {/* ── Hero cluster: featured banner + Bento quick-pick tiles (always first) ── */}
         {trending.length > 0 && (
-          <HeroBanner
-            trending={trending}
-            trendingTV={trendingTV}
-            apiKey={apiKey}
-            onSelect={onSelect}
-            onSave={onSave}
-            saved={saved}
-          />
+          <div className="hero-cluster">
+            <HeroBanner
+              trending={trending}
+              trendingTV={trendingTV}
+              apiKey={apiKey}
+              onSelect={onSelect}
+              onSave={onSave}
+              saved={saved}
+            />
+            <HeroQuickPicks items={topRatedItems} onSelect={onSelect} title="Top Rated" />
+          </div>
         )}
+
+        {/* ── Browse by Genre ── */}
+        <GenreBrowser
+          apiKey={apiKey}
+          onSelect={onSelect}
+          watched={watched}
+          onMarkWatched={onMarkWatched}
+          onMarkUnwatched={onMarkUnwatched}
+          ratingsMap={enrichedRatingsMap}
+        />
 
       {/* ── Rows in user-configured order ── */}
       {rowOrder.map((id) => {
@@ -302,7 +317,7 @@ export default function HomePage({
                 {titleHighlight ? (
                   <>
                     {title}&nbsp;
-                    <span style={{ color: "var(--red)" }}>
+                    <span style={{ color: "var(--accent)" }}>
                       {titleHighlight}
                     </span>
                   </>
@@ -311,7 +326,7 @@ export default function HomePage({
                 )}
               </div>
               <div className="cards-grid">
-                {items.map((item) => {
+                {items.map((item, idx) => {
                   const type = item.media_type === "tv" ? "tv" : "movie";
                   const rk = `${type}_${item.id}`;
                   const rd = enrichedRatingsMap[rk] || {};
@@ -327,6 +342,7 @@ export default function HomePage({
                       ageRating={rd.cert}
                       restricted={rd.restricted}
                       apiKey={apiKey}
+                      featured={idx === 0}
                     />
                   );
                 })}

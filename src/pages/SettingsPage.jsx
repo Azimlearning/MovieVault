@@ -61,8 +61,8 @@ function SettingsSelect({ value, onChange, options, style }) {
           gap: 28,
           padding: "9px 14px",
           background: open ? "var(--surface3)" : "var(--surface2)",
-          border: `1px solid ${open ? "var(--red)" : "var(--border)"}`,
-          boxShadow: open ? "0 0 0 3px rgba(229,9,20,0.12)" : "none",
+          border: `1px solid ${open ? "var(--accent)" : "var(--border)"}`,
+          boxShadow: open ? "0 0 0 3px rgba(255,138,61,0.12)" : "none",
           borderRadius: 8,
           color: "var(--text)",
           fontFamily: "var(--font-body)",
@@ -133,8 +133,8 @@ function SettingsSelect({ value, onChange, options, style }) {
                   fontSize: 14,
                   borderRadius: 7,
                   cursor: "pointer",
-                  color: active ? "var(--red)" : "var(--text)",
-                  background: active ? "rgba(229,9,20,0.10)" : "transparent",
+                  color: active ? "var(--accent)" : "var(--text)",
+                  background: active ? "rgba(255,138,61,0.10)" : "transparent",
                   fontWeight: active ? 600 : 400,
                   transition: "background 0.1s, color 0.1s",
                   whiteSpace: "nowrap",
@@ -204,8 +204,8 @@ function ResetConfirmDialog({ onConfirm, onCancel }) {
             width: 52,
             height: 52,
             borderRadius: "50%",
-            background: "rgba(229,9,20,0.12)",
-            border: "1px solid rgba(229,9,20,0.3)",
+            background: "rgba(229,72,77,0.12)",
+            border: "1px solid rgba(229,72,77,0.3)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -240,7 +240,7 @@ function ResetConfirmDialog({ onConfirm, onCancel }) {
           deleted.
           <br />
           <br />
-          <span style={{ color: "var(--red)" }}>
+          <span style={{ color: "var(--danger)" }}>
             This action cannot be undone.
           </span>
         </div>
@@ -257,7 +257,7 @@ function ResetConfirmDialog({ onConfirm, onCancel }) {
             className="btn"
             style={{
               flex: 1,
-              background: "var(--red)",
+              background: "var(--danger)",
               color: "#fff",
               border: "none",
               fontWeight: 600,
@@ -309,8 +309,8 @@ function ConfirmDialog({
             width: 52,
             height: 52,
             borderRadius: "50%",
-            background: "rgba(229,9,20,0.12)",
-            border: "1px solid rgba(229,9,20,0.3)",
+            background: "rgba(229,72,77,0.12)",
+            border: "1px solid rgba(229,72,77,0.3)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -340,7 +340,7 @@ function ConfirmDialog({
           {description}
           <br />
           <br />
-          <span style={{ color: "var(--red)" }}>
+          <span style={{ color: "var(--danger)" }}>
             This action cannot be undone.
           </span>
         </div>
@@ -356,7 +356,7 @@ function ConfirmDialog({
             className="btn"
             style={{
               flex: 1,
-              background: "var(--red)",
+              background: "var(--danger)",
               color: "#fff",
               border: "none",
               fontWeight: 600,
@@ -378,8 +378,8 @@ function Toggle({ value, onChange, title }) {
       onClick={() => onChange(!value)}
       title={title}
       style={{
-        background: value ? "var(--red)" : "var(--surface2)",
-        border: "1px solid " + (value ? "var(--red)" : "var(--border)"),
+        background: value ? "var(--accent)" : "var(--surface2)",
+        border: "1px solid " + (value ? "var(--accent)" : "var(--border)"),
         borderRadius: 20,
         width: 40,
         height: 22,
@@ -416,7 +416,7 @@ function StatusBadge({ status }) {
         marginTop: 10,
         fontSize: 13,
         fontWeight: 500,
-        color: isError ? "var(--red)" : "#48c774",
+        color: isError ? "var(--danger)" : "#48c774",
       }}
     >
       {status}
@@ -511,9 +511,9 @@ function CleanRow({
           style={
             danger
               ? {
-                  color: hovered ? "#fff" : "var(--red)",
-                  background: hovered ? "rgba(229,9,20,0.85)" : "transparent",
-                  borderColor: hovered ? "transparent" : "rgba(229,9,20,0.35)",
+                  color: hovered ? "#fff" : "var(--danger)",
+                  background: hovered ? "rgba(229,72,77,0.85)" : "transparent",
+                  borderColor: hovered ? "transparent" : "rgba(229,72,77,0.35)",
                   opacity: busy ? 0.5 : 1,
                   transition: "all 0.2s",
                 }
@@ -616,9 +616,9 @@ function VersionSection() {
               display: "inline-flex",
               alignItems: "center",
               gap: 6,
-              background: "rgba(229,9,20,0.12)",
-              border: "1px solid rgba(229,9,20,0.4)",
-              color: "var(--red)",
+              background: "rgba(255,138,61,0.12)",
+              border: "1px solid rgba(255,138,61,0.4)",
+              color: "var(--accent)",
               borderRadius: 8,
               padding: "6px 14px",
               fontSize: 13,
@@ -627,10 +627,10 @@ function VersionSection() {
               transition: "background 0.2s",
             }}
             onMouseEnter={(e) =>
-              (e.currentTarget.style.background = "rgba(229,9,20,0.22)")
+              (e.currentTarget.style.background = "rgba(255,138,61,0.22)")
             }
             onMouseLeave={(e) =>
-              (e.currentTarget.style.background = "rgba(229,9,20,0.12)")
+              (e.currentTarget.style.background = "rgba(255,138,61,0.12)")
             }
           >
             🎉 v{result.latest} available. Install Update
@@ -644,7 +644,7 @@ function VersionSection() {
         )}
 
         {result?.error && (
-          <span style={{ fontSize: 13, color: "var(--red)" }}>
+          <span style={{ fontSize: 13, color: "var(--danger)" }}>
             ✕ {result.error}
           </span>
         )}
@@ -764,14 +764,14 @@ function HomeLayoutSection() {
         <div style={{ display: "flex", gap: 10 }}>
           {[
             {
-              value: "carousel",
-              label: "Carousel",
-              desc: "Scrollable spotlight with featured poster",
+              value: "list",
+              label: "⊞ Bento Grid",
+              desc: "Varied-size card grid — the default",
             },
             {
-              value: "list",
-              label: "⊞ Grid",
-              desc: "Compact grid of all items",
+              value: "carousel",
+              label: "Carousel",
+              desc: "Scrollable spotlight with one featured poster",
             },
           ].map(({ value, label, desc }) => (
             <button
@@ -782,10 +782,10 @@ function HomeLayoutSection() {
                 maxWidth: 220,
                 padding: "10px 14px",
                 borderRadius: 8,
-                border: `2px solid ${viewMode === value ? "var(--red)" : "var(--border)"}`,
+                border: `2px solid ${viewMode === value ? "var(--accent)" : "var(--border)"}`,
                 background:
                   viewMode === value
-                    ? "color-mix(in srgb, var(--red) 12%, var(--surface))"
+                    ? "color-mix(in srgb, var(--accent) 12%, var(--surface))"
                     : "var(--surface)",
                 color: viewMode === value ? "var(--text)" : "var(--text2)",
                 cursor: "pointer",
@@ -1184,7 +1184,7 @@ function BackupRestoreSection({ onRestored }) {
             style={{
               fontSize: 13,
               fontWeight: 500,
-              color: restoreStatus.startsWith("✕") ? "var(--red)" : "#48c774",
+              color: restoreStatus.startsWith("✕") ? "var(--danger)" : "#48c774",
             }}
           >
             {restoreStatus}
@@ -1200,7 +1200,7 @@ function BackupRestoreSection({ onRestored }) {
 // ── Appearance Section ────────────────────────────────────────────────────────
 function AppearanceSection() {
   const [accent, setAccent] = useState(
-    () => storage.get(STORAGE_KEYS.ACCENT_COLOR) || "red",
+    () => storage.get(STORAGE_KEYS.ACCENT_COLOR) || "amber",
   );
   const [fontSize, setFontSize] = useState(
     () => storage.get(STORAGE_KEYS.FONT_SIZE) || "normal",
@@ -1224,7 +1224,10 @@ function AppearanceSection() {
     if (window.electron?.setZoomFactor)
       window.electron.setZoomFactor(zoomMap[fontSize] ?? 1);
     document.body.classList.toggle("compact-mode", compact);
-    document.body.classList.toggle("no-anim", noAnim);
+    const prefersReducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    document.body.classList.toggle("no-anim", noAnim || prefersReducedMotion);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -1443,9 +1446,9 @@ function LibraryPrivacySection() {
             style={{
               marginTop: 12,
               fontSize: 13,
-              color: "var(--red)",
-              background: "rgba(229,9,20,0.08)",
-              border: "1px solid rgba(229,9,20,0.2)",
+              color: "var(--danger)",
+              background: "rgba(229,72,77,0.08)",
+              border: "1px solid rgba(229,72,77,0.2)",
               borderRadius: 8,
               padding: "10px 14px",
             }}
@@ -1710,7 +1713,7 @@ function VideoSourcesSection() {
             Diagnostics (Broken Source Reports)
           </div>
           {reports.length > 0 && (
-            <button className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }} onClick={handleClearReports}>
+            <button className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 12, color: "var(--danger)" }} onClick={handleClearReports}>
               Clear Logs
             </button>
           )}
@@ -1841,7 +1844,7 @@ function SubtitleSettingsSection() {
         Optionally add a{" "}
         <span
           style={{
-            color: "var(--red)",
+            color: "var(--accent)",
             cursor: "pointer",
             textDecoration: "underline",
           }}
@@ -2235,7 +2238,7 @@ function SectionGroupHeader({ title, subtitle }) {
             fontFamily: "var(--font-display)",
             fontSize: 16,
             letterSpacing: 2,
-            color: "var(--red)",
+            color: "var(--accent)",
             textTransform: "uppercase",
             fontWeight: 700,
             whiteSpace: "nowrap",
@@ -2244,7 +2247,7 @@ function SectionGroupHeader({ title, subtitle }) {
           {title}
         </div>
         <div
-          style={{ flex: 1, height: 1, background: "rgba(229,9,20,0.18)" }}
+          style={{ flex: 1, height: 1, background: "rgba(255,138,61,0.18)" }}
         />
       </div>
       {subtitle && (
@@ -2680,7 +2683,7 @@ function SettingsTopBar({ sectionRefs, contentRef }) {
         position: "sticky",
         top: 0,
         zIndex: 100,
-        background: "var(--bg, #141414)",
+        background: "var(--bg, #0a0a0a)",
         borderBottom: "1px solid var(--border)",
         padding: "0 48px",
         backdropFilter: "blur(12px)",
@@ -2706,10 +2709,10 @@ function SettingsTopBar({ sectionRefs, contentRef }) {
                 flex: 1,
                 maxWidth: 540,
                 background: "var(--surface2)",
-                border: `1px solid ${noMatch ? "#ff3860" : "var(--red)"}`,
+                border: `1px solid ${noMatch ? "#ff3860" : "var(--accent)"}`,
                 borderRadius: 8,
                 padding: "5px 8px 5px 12px",
-                boxShadow: `0 0 0 3px ${noMatch ? "rgba(255,56,96,0.1)" : "rgba(229,9,20,0.1)"}`,
+                boxShadow: `0 0 0 3px ${noMatch ? "rgba(255,56,96,0.1)" : "rgba(255,138,61,0.1)"}`,
                 transition: "border-color 0.15s, box-shadow 0.15s",
               }}
             >
@@ -2942,8 +2945,8 @@ function SettingsTopBar({ sectionRefs, contentRef }) {
               alignItems: "center",
               gap: 8,
               background: navOpen ? "var(--surface3)" : "var(--surface2)",
-              border: `1px solid ${navOpen ? "var(--red)" : "var(--border)"}`,
-              boxShadow: navOpen ? "0 0 0 3px rgba(229,9,20,0.1)" : "none",
+              border: `1px solid ${navOpen ? "var(--accent)" : "var(--border)"}`,
+              boxShadow: navOpen ? "0 0 0 3px rgba(255,138,61,0.1)" : "none",
               borderRadius: 8,
               padding: "6px 14px",
               fontSize: 13,
@@ -3664,7 +3667,7 @@ export default function SettingsPage({
                     borderRadius: 12,
                     border: "1px solid var(--border)",
                     cursor: "pointer",
-                    background: showOnePace ? "var(--red)" : "var(--surface2)",
+                    background: showOnePace ? "var(--accent)" : "var(--surface2)",
                     position: "relative",
                     transition: "background 0.2s",
                     flexShrink: 0,
@@ -3717,7 +3720,7 @@ export default function SettingsPage({
                   <div
                     style={{
                       fontSize: 12,
-                      color: refreshOnePaceResult.ok ? "#48c774" : "var(--red)",
+                      color: refreshOnePaceResult.ok ? "#48c774" : "var(--danger)",
                       marginTop: 8,
                     }}
                   >
@@ -3913,7 +3916,7 @@ export default function SettingsPage({
                   borderRadius: 12,
                   border: "1px solid var(--border)",
                   cursor: "pointer",
-                  background: autoNextEpisode ? "var(--red)" : "var(--surface2)",
+                  background: autoNextEpisode ? "var(--accent)" : "var(--surface2)",
                   position: "relative",
                   transition: "background 0.2s",
                   flexShrink: 0,
@@ -4010,7 +4013,7 @@ export default function SettingsPage({
                   borderRadius: 12,
                   border: "1px solid var(--border)",
                   cursor: "pointer",
-                  background: autoplayTrailers ? "var(--red)" : "var(--surface2)",
+                  background: autoplayTrailers ? "var(--accent)" : "var(--surface2)",
                   position: "relative",
                   transition: "background 0.2s",
                   flexShrink: 0,
@@ -4105,14 +4108,14 @@ export default function SettingsPage({
                       width: 18,
                       height: 18,
                       borderRadius: "50%",
-                      border: `2px solid ${introSkipMode === value ? "var(--red)" : "var(--border)"}`,
+                      border: `2px solid ${introSkipMode === value ? "var(--accent)" : "var(--border)"}`,
                       background:
-                        introSkipMode === value ? "var(--red)" : "transparent",
+                        introSkipMode === value ? "var(--accent)" : "transparent",
                       flexShrink: 0,
                       marginTop: 1,
                       boxShadow:
                         introSkipMode === value
-                          ? "0 0 0 3px rgba(229,9,20,0.18)"
+                          ? "0 0 0 3px rgba(255,138,61,0.18)"
                           : "none",
                       transition: "all 0.15s",
                       display: "flex",
@@ -4268,7 +4271,7 @@ export default function SettingsPage({
               </div>
             )}
             {!downloadPath && (
-              <div style={{ marginTop: 10, fontSize: 13, color: "var(--red)" }}>
+              <div style={{ marginTop: 10, fontSize: 13, color: "var(--danger)" }}>
                 ⚠ No download folder set - videos cannot be downloaded until you
                 set one.
               </div>
@@ -4376,7 +4379,7 @@ export default function SettingsPage({
             {traktUser ? (
               <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                 <span style={{ fontSize: 14, color: "var(--text2)" }}>
-                  Connected as: <strong style={{ color: "var(--red)" }}>{traktUser}</strong>
+                  Connected as: <strong style={{ color: "var(--accent)" }}>{traktUser}</strong>
                 </span>
                 <button className="btn btn-secondary" style={{ padding: "6px 12px" }} onClick={handleDisconnectTrakt}>
                   Disconnect
@@ -4438,7 +4441,7 @@ export default function SettingsPage({
             {anilistUser ? (
               <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                 <span style={{ fontSize: 14, color: "var(--text2)" }}>
-                  Connected as: <strong style={{ color: "var(--red)" }}>{anilistUser}</strong>
+                  Connected as: <strong style={{ color: "var(--accent)" }}>{anilistUser}</strong>
                 </span>
                 <button className="btn btn-secondary" style={{ padding: "6px 12px" }} onClick={handleDisconnectAnilist}>
                   Disconnect
@@ -4598,7 +4601,7 @@ export default function SettingsPage({
             <div
               style={{
                 padding: "22px 24px",
-                background: "rgba(229,9,20,0.03)",
+                background: "rgba(229,72,77,0.03)",
               }}
             >
               <div
@@ -4627,9 +4630,9 @@ export default function SettingsPage({
                         fontSize: 10,
                         fontWeight: 700,
                         letterSpacing: 1,
-                        color: "var(--red)",
-                        background: "rgba(229,9,20,0.12)",
-                        border: "1px solid rgba(229,9,20,0.25)",
+                        color: "var(--danger)",
+                        background: "rgba(229,72,77,0.12)",
+                        border: "1px solid rgba(229,72,77,0.25)",
                         padding: "2px 7px",
                         borderRadius: 4,
                         textTransform: "uppercase",
@@ -4658,13 +4661,13 @@ export default function SettingsPage({
                     onMouseEnter={() => setResetHovered(true)}
                     onMouseLeave={() => setResetHovered(false)}
                     style={{
-                      color: resetHovered ? "#fff" : "var(--red)",
+                      color: resetHovered ? "#fff" : "var(--danger)",
                       background: resetHovered
-                        ? "rgba(229,9,20,0.85)"
-                        : "rgba(229,9,20,0.08)",
+                        ? "rgba(229,72,77,0.85)"
+                        : "rgba(229,72,77,0.08)",
                       border: resetHovered
                         ? "1px solid transparent"
-                        : "1px solid rgba(229,9,20,0.3)",
+                        : "1px solid rgba(229,72,77,0.3)",
                       transition: "all 0.2s",
                     }}
                   >

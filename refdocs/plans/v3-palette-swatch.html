@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MovieVault V3 — Palette Swatch (throwaway, not shipped)</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111111;
+    --surface2: #1a1a1a;
+    --surface3: #222222;
+    --border: #2a2a2a;
+    --accent: #FF8A3D;
+    --accent2: #FFAA66;
+    --accent-dim: rgba(255, 138, 61, 0.15);
+    --accent-glow: 0 0 30px rgba(255, 138, 61, 0.35);
+    --violet: #7C6FE0;
+    --gold: #c8a84b;
+    --text: #f0f0f0;
+    --text2: #c0c0c0;
+    --text3: #909090;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Arial Narrow", Arial, sans-serif;
+    padding: 48px;
+  }
+  h1.display {
+    font-family: Impact, "Arial Narrow", sans-serif;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-size: 42px;
+    margin-bottom: 8px;
+  }
+  p.sub { color: var(--text3); margin-bottom: 40px; font-family: Arial, sans-serif; }
+  .swatch-row { display: flex; gap: 12px; margin-bottom: 40px; flex-wrap: wrap; }
+  .swatch {
+    width: 120px; height: 90px; border-radius: 8px;
+    display: flex; align-items: flex-end; padding: 8px;
+    font-size: 11px; font-family: Arial, sans-serif; color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .bento {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 40px;
+  }
+  .card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    aspect-ratio: 2/3;
+    display: flex;
+    align-items: flex-end;
+    padding: 14px;
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+    color: var(--text2);
+    transition: box-shadow 0.2s, transform 0.2s;
+  }
+  .card.featured {
+    grid-column: span 2;
+    grid-row: span 1;
+    aspect-ratio: 4/3;
+    background: linear-gradient(135deg, var(--surface3), var(--surface2));
+    color: var(--text);
+    font-size: 16px;
+  }
+  .card:hover {
+    box-shadow: var(--accent-glow);
+    transform: translateY(-2px);
+  }
+  .buttons { display: flex; gap: 16px; margin-bottom: 40px; align-items: center; }
+  .btn {
+    border: none; border-radius: 8px; padding: 12px 24px;
+    font-family: Arial, sans-serif; font-weight: 600; font-size: 14px;
+    cursor: pointer;
+  }
+  .btn.cta { background: var(--accent); color: #1A0F05; }
+  .btn.cta:hover { background: var(--accent2); }
+  .btn.secondary { background: var(--surface3); color: var(--text); border: 1px solid var(--border); }
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--accent-dim); color: var(--accent2);
+    border-radius: 999px; padding: 4px 10px; font-size: 12px; font-family: Arial, sans-serif;
+  }
+  .rating { color: var(--gold); font-family: Arial, sans-serif; font-size: 13px; }
+  .violet-pill {
+    background: var(--violet); color: var(--text);
+    border-radius: 999px; padding: 4px 10px; font-size: 12px; font-family: Arial, sans-serif;
+    display: inline-block;
+  }
+  .text-sample { font-family: Arial, sans-serif; max-width: 480px; line-height: 1.6; }
+  .text-sample p { color: var(--text2); margin-bottom: 8px; }
+  .text-sample small { color: var(--text3); }
+</style>
+</head>
+<body>
+
+  <h1 class="display">MovieVault — V3 Palette</h1>
+  <p class="sub">Near-black surfaces unchanged from the current app — only the accent moves off Netflix red onto warm amber, with violet as a sparing secondary accent. Throwaway file — delete after gut-check, not part of the shipped app.</p>
+
+  <div class="swatch-row">
+    <div class="swatch" style="background:var(--bg)">--bg #0a0a0a</div>
+    <div class="swatch" style="background:var(--surface)">--surface #111111</div>
+    <div class="swatch" style="background:var(--surface2)">--surface2 #1a1a1a</div>
+    <div class="swatch" style="background:var(--surface3)">--surface3 #222222</div>
+    <div class="swatch" style="background:var(--accent); color:#1A0F05;">--accent #FF8A3D</div>
+    <div class="swatch" style="background:var(--violet)">--violet #7C6FE0</div>
+    <div class="swatch" style="background:var(--gold); color:#1A0F05;">--gold #c8a84b</div>
+  </div>
+
+  <div class="buttons">
+    <button class="btn cta">▶ Play</button>
+    <button class="btn secondary">+ Add to Library</button>
+    <span class="badge">● New episode</span>
+    <span class="violet-pill">Watch Party</span>
+    <span class="rating">★ 8.4</span>
+  </div>
+
+  <div class="bento">
+    <div class="card featured">Featured: Trending #1</div>
+    <div class="card">Poster card</div>
+    <div class="card">Poster card</div>
+    <div class="card">Poster card</div>
+    <div class="card">Poster card</div>
+    <div class="card">Poster card</div>
+  </div>
+
+  <div class="text-sample">
+    <p>Body text on dark indigo surface — checking readability of <strong>--text2</strong> against <strong>--surface2</strong> at normal weight.</p>
+    <small>Tertiary/meta text in --text3, e.g. runtime · year · genre.</small>
+  </div>
+
+</body>
+</html>

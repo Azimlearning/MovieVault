@@ -1,6 +1,6 @@
 # Plan — UI Redesign V3 (Electron app)
 
-> **Status:** Draft v1.
+> **Status:** Phases 0–6 shipped (2026-06-18). Tier 1 signature details (§7) done; Tier 2 (#5–13) optional/unstarted. Two acceptance criteria need human verification: full manual smoke test, and final NSIS installer confirmation (unpacked exe already confirmed) — see `EXEC_UI_REDESIGN_V3.md` Phase 6.
 > **Scope:** Full visual redesign of the Electron desktop app (`src/`). Standalone initiative — `IMPROVEMENT_PLAN_V2.md` (P4 UX Polish, P5 One Pace, P6 Watch Party) is fully shipped and untouched by this plan.
 > **Audience:** You (solo dev) and any AI coding assistant executing this plan.
 
@@ -49,11 +49,11 @@ Why now: the app's content (One Pace, Watch Party, rich detail pages) is feature
 
 | Decision | Choice |
 |---|---|
-| Color palette | **New palette**, moving away from the literal red/black Netflix look. Candidate: deep indigo/violet primary surfaces with a warm amber/gold CTA accent (premium, cinematic, distinct from any existing streamer's brand color) — see `refdocs/plans/README.md`-adjacent design-system notes from `ui-ux-pro-max` skill search. Final hex values to be locked in Phase 0 of execution. |
-| Layout pattern | **Bento-style modular cards** — varied card sizes/spans, rounded corners (16–24px), soft layered shadows, generous gaps — replacing today's uniform dense grid. |
+| Color palette | **Locked (Phase 0, 2026-06-17).** Surfaces stay near-black, unchanged from today's app — the user confirmed the near-black mood itself was never the "Netflix" problem, only the red accent was. Only the accent and one new secondary token change: `--bg: #0a0a0a`, `--surface: #111111`, `--surface2: #1a1a1a`, `--surface3: #222222`, `--border: #2a2a2a` (all unchanged from current `global.css`). `--red`/`--red2`/`--red-dim`/`--red-glow` are renamed and recolored to `--accent: #FF8A3D` / `--accent2: #FFAA66` / `--accent-dim: rgba(255,138,61,0.15)` / `--accent-glow: 0 0 30px rgba(255,138,61,0.35)` (warm amber, used for CTAs/play buttons/active states). New secondary accent `--violet: #7C6FE0` for sparing use (Watch Party badge, focus rings, links) — not a primary surface color. `--gold: #c8a84b` (existing, currently unused) is kept reserved for star-rating display only, so it doesn't visually collide with the new amber CTA. `--text`/`--text2`/`--text3` unchanged. See `refdocs/plans/v3-palette-swatch.html` for the visual gut-check (throwaway file, safe to delete once Phase 2 ships these into `global.css`). |
+| Layout pattern | **Bento-style modular cards** — varied card sizes/spans, rounded corners (16–24px), soft layered shadows, generous gaps — replacing today's uniform dense grid. **Sizing rule (locked, Phase 0):** in discovery rows (Trending, Popular, Recommended, genre rows), the first item only renders as a 2x1 featured span; every other item in that row is standard 1x1. Utility/functional rows — Continue Watching, Library, Downloads, search results, season/episode grids — always stay uniform 1x1, since those are scanned for completeness, not discovery, and varied sizing would hurt scannability there. |
 | Content density inspiration | **Netflix-style density and hero banner concept** are kept as structural inspiration (full-width hero, horizontal rows for "Continue Watching" / "Trending" / "More like this") even though the color identity changes. |
 | Typography | Keep Bebas Neue (display) + DM Sans (body) — already self-hosted as `.woff2`, no churn. Revisit only if the new palette doesn't read well with all-caps condensed display type. |
-| App icon | New mark drawn in the same flat line-art SVG style as `Icons.jsx` (not a monogram, not user-supplied) — likely a stylized play-button/film-frame combination consistent with `FilmIcon`/`PlayIcon`. |
+| App icon | New mark drawn in the same flat line-art SVG style as `Icons.jsx` (not a monogram, not user-supplied) — likely a stylized play-button/film-frame combination consistent with `FilmIcon`/`PlayIcon`. **Production method (locked, Phase 0):** hand-author a single master SVG (`public/brand/icon-master.svg`) in that same stroke-based path language — not raster image-gen, since the goal is a vector that matches the existing icon set's path style exactly, which image generation can't guarantee. Add `sharp` as a devDependency (approved per §3/§7's relaxed dependency policy — there's no dependency-free reliable way to rasterize SVG→PNG at fixed sizes) and a small one-off script (e.g. `scripts/build-icons.mjs`) that exports: (a) a 1024×1024 PNG as electron-builder's single icon source — it auto-generates the Windows `.ico` / macOS `.icns` / Linux icon set from that one master at build time, so the full `public/sized/*` ladder of 7 hand-maintained sizes is **not** recreated; (b) a 256×256 PNG specifically for `index.js`'s runtime `BrowserWindow` icon. Manual export is the fallback only if `sharp`'s native binary fails to install on this machine. |
 | Animation | Plain CSS transitions/keyframes by default, respecting `prefers-reduced-motion`. A small dependency is allowed if a specific §7 signature detail needs one. |
 
 ---
@@ -73,9 +73,9 @@ Why now: the app's content (One Pace, Watch Party, rich detail pages) is feature
 
 ## 6. Open questions
 
-1. **Exact palette hex values.** A candidate (indigo/violet + amber) is proposed in §4 but not locked — needs a quick visual gut-check (e.g. a static HTML swatch/mockup) before touching `global.css` everywhere.
-2. **Icon production method.** Hand-drawn SVG → exported to PNG set via what tool? (sharp/electron-icon-builder script vs. an image-gen skill vs. manual export in a vector editor.) Decide in execution Phase 0.
-3. **Bento card sizing rules.** Bento implies *varied* card sizes — need a concrete rule for which rows/cards get the larger spans (e.g. featured/highly-rated titles get 2x size, everything else 1x) so it doesn't look random.
+1. ~~**Exact palette hex values.**~~ **Resolved 2026-06-17** — see §4 Color palette row. Gut-checked via `refdocs/plans/v3-palette-swatch.html`; user's call was to keep the near-black surfaces unchanged and only swap the accent off red onto amber, rather than re-tinting the surfaces indigo/violet as first proposed.
+2. ~~**Icon production method.**~~ **Resolved 2026-06-17** — see §4 App icon row. Hand-authored master SVG + `sharp` devDependency + a small rasterization script; electron-builder auto-generates per-platform formats from one 1024×1024 master.
+3. ~~**Bento card sizing rules.**~~ **Resolved 2026-06-17** — see §4 Layout pattern row. First item in discovery rows gets a 2x1 featured span; utility/functional rows (Continue Watching, Library, Downloads, search, episode grids) stay uniform 1x1.
 4. **Web app follow-up.** Confirm (not now, but on record) that `apps/web/src/` redesign is a separate future plan once this one ships, per `CLAUDE.md`'s two-codebase split.
 
 ---
@@ -102,6 +102,37 @@ Why now: the app's content (One Pace, Watch Party, rich detail pages) is feature
 11. Watch Party reaction physics — emoji float with randomized rotation/drift instead of identical stacked sprites.
 12. `BlockedStatsModal` copy pass — deadpan/funny stats copy instead of generic parental-control tone (content-only change, no new pattern).
 13. Film-reel-style loader (built from the existing `FilmIcon` SVG language) replacing the generic spinner on initial load.
+
+---
+
+## 8. Layout & IA overhaul (added 2026-06-18, post-Phase-6 feedback)
+
+**Why this section exists:** after Phases 0–6 shipped, user feedback on the running app was that it "feels like you just changed the color and tweaked some stuff but overall it looks the same" — correct. Phases 0–6 were a palette/token/icon swap plus Bento card *tokens* that mostly only surface in a view mode ("list") that isn't the default. The actual layout — sidebar, hero, content rows — was never touched. This section scopes the real structural makeover that was the original ask.
+
+**Goal:** make the Electron app's navigation and content layout feel deliberately designed, not a recolored stock template — without abandoning the palette/icon/token work already shipped.
+
+**Scope (in):**
+1. **Sidebar redesign.** Concrete complaints: icon-only rail with no visible labels (tooltip-only); nav order feels arbitrary (Search sits above Home); the "saved/library" thumbnail strip looks bolted onto the bottom of the icon rail rather than designed; the pattern itself ("generic icon rail") needs reconsidering, not just restyling.
+2. **Hero → Bento cluster.** Replace the single full-bleed Netflix-pattern hero with a multi-tile cluster: one large featured tile + several smaller quick-pick tiles, varied sizes, in keeping with the Bento concept this redesign was supposed to deliver from the start.
+3. **Rows → real Bento grid by default.** `TrendingCarousel` (the 3D coverflow, currently the *default* row renderer) is replaced as the default with the `cards-grid`/`MediaCard`/`featured` Bento system already built in Phase 3 — that system currently only renders in "list" view mode, which is why it was invisible to the user.
+4. **Genre/category browsing.** User specifically wants Netflix-style sort/filter by genre — currently absent entirely. New feature, not just a re-skin.
+5. **Episode-page UX pass.** User flagged the season/episode browsing UX on `TVPage.jsx` as also lacking — scope to be assessed once reached (read the current implementation, identify concrete gaps, propose fixes before building).
+
+**Scope (out, for now):** Watch Party UI, Settings page structure, OnePace page structure (already got a voyage-map addition in Phase 5) — unless feedback after this pass says otherwise.
+
+**Constraints:** Same as §3 (vanilla CSS/JS by default, dependency only if a specific piece truly needs one). This is layout/IA work, not a new visual-token pass — §4's locked palette/typography/icon decisions are unchanged.
+
+**Execution order (per user's direction when asked):** Sidebar first (most concretely scoped, fastest to validate), then hero cluster + Bento-by-default rows together (user explicitly chose "both" over the lighter single-hero option), then genre browsing, then the episode-page UX pass.
+
+**Acceptance criteria:**
+- [x] Sidebar nav items have visible text labels (not tooltip-only), grouped in a sensible order (Home before Search before content sections), and the saved/library strip reads as an intentional section, not a bolted-on afterthought. — Done 2026-06-18 (7a).
+- [x] The default home view (no view-mode toggling required) shows a multi-tile Bento hero cluster and Bento-grid rows with varied card sizes — not the old single hero + coverflow. — Done 2026-06-18 (7b).
+- [x] Users can filter/browse by genre somewhere in the app (Home and/or Library), matching the Netflix-style capability called out as missing. — Done 2026-06-18 (7c), `GenreBrowser` on `HomePage.jsx`.
+- [x] `TVPage.jsx`'s episode browsing has at least one concrete, identified UX gap fixed. — Done 2026-06-18 (7d): episode cards now use Bento radius/shadow tokens; season selector scrolls instead of wrapping.
+- [x] No regression to existing behavior (search, watch progress, context menus, drag-reorder, watch party, downloads) — this is additive/restructuring work, not a rewrite of app logic. — No app logic touched in any of 7a–7d, only markup/CSS/one default-value flip.
+- [x] `npx vite build` succeeds after each step; a changelog entry exists per `CLAUDE.md` for each session. — Verified after every sub-phase.
+
+**Still outstanding:** none of the above were visually verified in the running app by the agent (sandboxed Electron can't launch a real GUI here) — the user should do a full visual/interaction pass (Home, a TV show's episode list, the sidebar, genre browsing) before treating this section as fully closed.
 
 ---
 
