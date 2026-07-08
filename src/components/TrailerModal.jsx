@@ -26,7 +26,7 @@ const DETECT_BOT_JS = `
 (function() {
   var title = (document.title || '').toLowerCase()
   var body  = (document.body  && document.body.innerText || '').toLowerCase()
-  var botKeywords = ['verifying', 'antibot', 'challenge', 'ddos', 'please wait', 'checking your browser', 'just a moment']
+  var botKeywords = ['verifying', 'antibot', 'challenge', 'ddos', 'please wait', 'checking your browser', 'just a moment', 'forbidden', 'access denied', 'denied by administrative rule', 'go-away', 'anubis', 'rate limit']
   var isBot = botKeywords.some(function(k) { return title.includes(k) || body.includes(k) })
   isBot
 })()

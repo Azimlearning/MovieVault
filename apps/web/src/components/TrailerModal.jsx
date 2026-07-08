@@ -1,19 +1,10 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { CloseIcon, ExternalLinkIcon } from "./Icons";
 import { storage } from "../utils/storage";
 
+// Kept for SettingsPage (custom-instance field placeholder/default) and for
+// users who explicitly prefer an Invidious instance.
 export const DEFAULT_INVIDIOUS_BASE = "https://inv.nadeko.net";
-
-const FALLBACK_INSTANCES = [
-  "https://invidious.privacyredirect.com",
-  "https://inv.tux.pizza",
-  "https://yt.cdaut.de",
-  "https://invidious.lunar.icu",
-  "https://invidious.protokolla.fi",
-  "https://invidious.nerdvpn.de",
-  "https://iv.melmac.space",
-  "https://invidious.perennialte.ch",
-];
 
 export function getInvidiousBase() {
   return (storage.get("invidiousBase") || DEFAULT_INVIDIOUS_BASE).replace(
@@ -22,75 +13,32 @@ export function getInvidiousBase() {
   );
 }
 
-const DETECT_BOT_JS = `
-(function() {
-  var title = (document.title || '').toLowerCase()
-  var body  = (document.body  && document.body.innerText || '').toLowerCase()
-  var botKeywords = ['verifying', 'antibot', 'challenge', 'ddos', 'please wait', 'checking your browser', 'just a moment']
-  var isBot = botKeywords.some(function(k) { return title.includes(k) || body.includes(k) })
-  isBot
-})()
-`;
-
-// Hide the built-in Invidious button, detect video end
-const SETUP_JS = `
-(function() {
-  if (window.__trailerSetup) return
-  window.__trailerSetup = true
-
-  // Hide the "Watch on Invidious" button inside the player
-  var style = document.createElement('style')
-  style.textContent = '.player-container .invidious-link, a[href*="/watch"], .vjs-invidious-button { display: none !important; }'
-  document.head.appendChild(style)
-
-  // Detect video end and notify host
-  var attachEnded = function() {
-    var video = document.querySelector('video')
-    if (!video) return false
-    video.addEventListener('ended', function() {
-      window.__trailerEnded = true
-    })
-    return true
+// A browser <iframe> can't inspect cross-origin content, so the Electron
+// approach (probe each Invidious instance, detect anti-bot block pages via
+// executeJavaScript, fail over) is impossible on web — a "go-away" Forbidden
+// page fires onLoad exactly like a working player, so blind failover can't
+// tell them apart. YouTube's own privacy-enhanced embed is the one reliably
+// embeddable source (same reasoning as ADR-007, which already uses a YouTube
+// iframe for HeroBanner trailers). An Invidious instance is only used when
+// the user explicitly set a custom one in Settings.
+function getTrailerEmbed(trailerKey) {
+  const stored = (storage.get("invidiousBase") || "").replace(/\/$/, "");
+  const customized = stored && stored !== DEFAULT_INVIDIOUS_BASE;
+  if (customized) {
+    return {
+      embedUrl: `${stored}/embed/${trailerKey}?autoplay=1&listen=0`,
+      watchUrl: `${stored}/watch?v=${trailerKey}`,
+    };
   }
-  if (!attachEnded()) {
-    var obs = new MutationObserver(function() { if (attachEnded()) obs.disconnect() })
-    obs.observe(document.body, { childList: true, subtree: true })
-  }
-})()
-`;
+  return {
+    embedUrl: `https://www.youtube-nocookie.com/embed/${trailerKey}?autoplay=1&rel=0`,
+    watchUrl: `https://www.youtube.com/watch?v=${trailerKey}`,
+  };
+}
 
 export default function TrailerModal({ trailerKey, title, onClose }) {
-  const webviewRef = useRef(null);
-  const [currentSrc, setCurrentSrc] = useState(null);
-  const [statusMsg, setStatusMsg] = useState("Loading trailer…");
-  const [failed, setFailed] = useState(false);
-  const instanceIndexRef = useRef(-1);
-
-  const tryNextInstance = useCallback(() => {
-    const preferred = getInvidiousBase();
-    const list = [
-      preferred,
-      ...FALLBACK_INSTANCES.filter((i) => i !== preferred),
-    ];
-    instanceIndexRef.current += 1;
-    const idx = instanceIndexRef.current;
-    if (idx >= list.length) {
-      setFailed(true);
-      setStatusMsg(
-        "All Invidious instances failed. Try setting a custom instance in Settings.",
-      );
-      return;
-    }
-    const instance = list[idx];
-    const label = instance.replace(/^https?:\/\//, "");
-    setStatusMsg(idx === 0 ? "Loading trailer…" : `Trying ${label}…`);
-    setCurrentSrc(`${instance}/embed/${trailerKey}?autoplay=1&listen=0`);
-  }, [trailerKey]);
-
-  useEffect(() => {
-    instanceIndexRef.current = -1;
-    tryNextInstance();
-  }, [tryNextInstance]);
+  const [loading, setLoading] = useState(true);
+  const { embedUrl, watchUrl } = getTrailerEmbed(trailerKey);
 
   useEffect(() => {
     const handler = (e) => {
@@ -100,63 +48,13 @@ export default function TrailerModal({ trailerKey, title, onClose }) {
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  // Open current video on Invidious in system browser
   const openInBrowser = () => {
-    const preferred = getInvidiousBase();
-    const url = `${preferred}/watch?v=${trailerKey}`;
-    window.electron?.openExternal(url);
+    if (window.electron?.openExternal) {
+      window.electron.openExternal(watchUrl);
+    } else {
+      window.open(watchUrl, "_blank", "noopener");
+    }
   };
-
-  useEffect(() => {
-    const wv = webviewRef.current;
-    if (!wv || !currentSrc) return;
-
-    const onLoad = () => {
-      wv.executeJavaScript(DETECT_BOT_JS)
-        .then((isBot) => {
-          if (isBot) {
-            tryNextInstance();
-          } else {
-            wv.executeJavaScript(SETUP_JS).catch(() => {});
-            setStatusMsg(null);
-          }
-        })
-        .catch(() => tryNextInstance());
-    };
-
-    const onFailLoad = () => {
-      tryNextInstance();
-    };
-
-    const onWillNavigate = (e) => {
-      const instanceBase = currentSrc.split("/embed/")[0];
-      if (!e.url.startsWith(instanceBase)) {
-        e.preventDefault();
-        window.electron?.openExternal(e.url);
-      }
-    };
-
-    const endedPoll = setInterval(() => {
-      wv.executeJavaScript("!!window.__trailerEnded")
-        .then((ended) => {
-          if (ended) {
-            clearInterval(endedPoll);
-            setTimeout(onClose, 1200);
-          }
-        })
-        .catch(() => {});
-    }, 800);
-
-    wv.addEventListener("did-finish-load", onLoad);
-    wv.addEventListener("did-fail-load", onFailLoad);
-    wv.addEventListener("will-navigate", onWillNavigate);
-    return () => {
-      clearInterval(endedPoll);
-      wv.removeEventListener("did-finish-load", onLoad);
-      wv.removeEventListener("did-fail-load", onFailLoad);
-      wv.removeEventListener("will-navigate", onWillNavigate);
-    };
-  }, [currentSrc, tryNextInstance, onClose]);
 
   return (
     <div className="trailer-overlay" onClick={onClose}>
@@ -199,7 +97,7 @@ export default function TrailerModal({ trailerKey, title, onClose }) {
           className="trailer-embed-wrap"
           style={{ background: "#000", position: "relative" }}
         >
-          {(statusMsg || failed) && (
+          {loading && (
             <div
               style={{
                 position: "absolute",
@@ -210,43 +108,33 @@ export default function TrailerModal({ trailerKey, title, onClose }) {
                 alignItems: "center",
                 justifyContent: "center",
                 background: "#000",
-                color: failed ? "#ff3860" : "rgba(255,255,255,0.6)",
+                color: "rgba(255,255,255,0.6)",
                 fontSize: 14,
                 textAlign: "center",
                 padding: "0 32px",
                 gap: 10,
+                pointerEvents: "none",
               }}
             >
-              {failed ? (
-                <>
-                  <span style={{ fontSize: 28 }}>⚠</span>
-                  <span>{statusMsg}</span>
-                </>
-              ) : (
-                <>
-                  <span style={{ opacity: 0.5 }}>⏳</span>
-                  <span>{statusMsg}</span>
-                </>
-              )}
+              <span style={{ opacity: 0.5 }}>⏳</span>
+              <span>Loading trailer…</span>
             </div>
           )}
 
-          {currentSrc && (
-            <iframe
-              ref={webviewRef}
-              src={currentSrc}
-              sandbox="allow-scripts allow-same-origin allow-forms"
-              style={{
-                position: "absolute",
-                inset: 0,
-                width: "100%",
-                height: "100%",
-                border: "none",
-                opacity: statusMsg ? 0 : 1,
-                transition: "opacity 0.2s",
-              }}
-            />
-          )}
+          <iframe
+            src={embedUrl}
+            onLoad={() => setLoading(false)}
+            sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
+            allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+            allowFullScreen
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              border: "none",
+            }}
+          />
         </div>
       </div>
     </div>

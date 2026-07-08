@@ -241,8 +241,14 @@ export const getSourceUrl = (sourceId, type, id, season, ep) => {
 export const sourceSupportsProgress = (sourceId) =>
   PLAYER_SOURCES.find((s) => s.id === sourceId)?.supportsProgress ?? false;
 
-export const sourceSandbox = (sourceId) =>
-  PLAYER_SOURCES.find((s) => s.id === sourceId)?.sandbox ?? DEFAULT_SANDBOX;
+export const sourceSandbox = (sourceId) => {
+  const src = PLAYER_SOURCES.find((s) => s.id === sourceId);
+  // `sandbox: null` is an explicit opt-out (see ADR-013) and must pass
+  // through — `?? DEFAULT_SANDBOX` here would coalesce null back into the
+  // default and silently re-sandbox Videasy. Only unknown sources fall back.
+  if (!src) return DEFAULT_SANDBOX;
+  return src.sandbox === undefined ? DEFAULT_SANDBOX : src.sandbox;
+};
 
 export const sourceProgressViaFrames = (sourceId) =>
   PLAYER_SOURCES.find((s) => s.id === sourceId)?.progressViaFrames ?? false;
