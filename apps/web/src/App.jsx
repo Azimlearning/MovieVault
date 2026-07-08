@@ -642,6 +642,25 @@ export default function App() {
     selectedRef.current = selected;
   }, [selected]);
 
+  // ── Per-page document.title ──────────────────────────────────────────────
+  useEffect(() => {
+    const PAGE_TITLES = {
+      home: "Home",
+      history: "Library",
+      downloads: "Downloads",
+      settings: "Settings",
+      onepace: "One Pace",
+      onepaceArc: "One Pace",
+      onepacePlayer: "One Pace",
+    };
+    const itemTitle = selected?.title || selected?.name;
+    const label =
+      (page === "movie" || page === "tv") && itemTitle
+        ? itemTitle
+        : PAGE_TITLES[page];
+    document.title = label ? `${label} — MovieVault` : "MovieVault";
+  }, [page, selected]);
+
   const navigateBack = useCallback(() => {
     setNavStack((prev) => {
       if (prev.length === 0) return prev;

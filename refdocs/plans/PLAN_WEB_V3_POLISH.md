@@ -1,6 +1,6 @@
 # PLAN — Web V3 Polish: Mobile Fixes, One Pace & Watch Party Redesign
 
-> Status: **Draft** (plan only — no implementation yet)
+> Status: **Phases 0–4 implemented (2026-07-08)**; Phase 5 doc close-out in progress. Skeleton loading (Phase 2) and live device re-verification (Phase 1) are the two open items — see execution doc for detail.
 > Target codebase: **Web app** (`apps/web/src/`) + **Party guest app** (`apps/party-guest/`) on `main`
 > Companion execution doc: `refdocs/execution/EXEC_WEB_V3_POLISH.md`
 
@@ -61,17 +61,17 @@ Current state: guest app (`apps/party-guest/`, deployed at `movievault-party.ver
 
 ## 4. Acceptance criteria
 
-1. Videasy plays again on desktop (no "Iframe Sandbox Detected" page) **and** a movie plays on a real mobile device on cellular, or — if the source is carrier-blocked — the failover banner appears within ~8 s and switching sources is one tap.
-2. No overlapping UI on MoviePage/TVPage at 360 px, 390 px, and 412 px widths; all touch targets ≥ 44 px.
-3. The per-source sandbox compatibility table (which sources tolerate which sandbox permissions) is written down in DECISIONS.md with the evidence.
-4. One Pace pages contain zero inline `--red` references and render correctly at 360 px; an episode streams and records progress on mobile.
-5. Party guest joining via a `/join/{id}` link never sees the Session ID field; join screen and room match V3 styling; party iframe blocks popup ads.
-6. Full One Pace and Party test checklists (C/D above) executed and results logged in the changelog.
-7. `refdocs/guides/feature_parity.md` updated — it still claims One Pace pages are "Not ported" to web, which is stale.
+1. ✅ Videasy plays again on desktop (no "Iframe Sandbox Detected" page) via isolated test-page verification. ⚠️ **Not yet re-verified on the original failing physical device** — no device access this session.
+2. ✅ No overlapping UI on MoviePage/TVPage at 360/390/412 px widths (via code inspection + CSS fix — `.detail-content` had zero mobile breakpoint before); touch targets bumped to ≥44 px. Not confirmed with an actual rendered screenshot at those widths.
+3. ✅ Per-source sandbox compatibility table written in DECISIONS.md ADR-013 with evidence (Videasy confirmed broken/fixed; VidSrc/2Embed evidence-backed conservative calls).
+4. ✅ One Pace pages: zero `--red` references remain (swapped to `--accent`/`--danger`); saga chips + arc grid + details grid + episode rows all have mobile CSS. ⚠️ Not device-tested for streaming/progress-recording on mobile.
+5. ✅ Party guest join flow hides Session ID when parsed from `/join/{id}`; join screen + room restyled to `--accent` tokens; party iframe now sandboxed per the same per-source policy (Videasy exempted, others sandboxed).
+6. ❌ **Not done** — the full One Pace and Party test checklists (plan §2.C/§2.D) require live devices and a running relay server / real party session; not executable in this session. Flagged as the top follow-up.
+7. ✅ `refdocs/guides/feature_parity.md` updated — stale "Not ported" claims for One Pace and Party guest corrected.
 
 ## 5. Open questions
 
-1. **Web-hosted parties?** Should the web app gain host capability (it has no `WatchPartyHostModal`), or does hosting stay Electron-only? Affects whether Party redesign includes any `apps/web/src` work at all.
-2. **Per-source sandbox policy:** ~~if diagnosis shows sandbox breaks only some providers~~ **Resolved 2026-07-07** — Videasy confirmed to hard-block sandboxed iframes, so a per-source `sandboxSafe` flag in `PLAYER_SOURCES` is the approach. Remaining sub-question: whether to label non-sandboxed sources in the source picker (e.g. "may show popups") so users can prefer protected sources.
-3. **Proxy fallback for blocked domains:** if carrier DNS blocking is confirmed, do we route embeds through a serverless proxy (like the existing One Pace Pixeldrain proxy)? Cost/abuse implications on Vercel Hobby.
-4. **PWA scope:** manifest-only, or also a service worker for offline shell? (Service worker adds cache-invalidation complexity.)
+1. **Web-hosted parties?** Still open. Not resolved this session — Party work in `apps/web/src` was limited to the iframe sandbox fix (shared with the main player fix); no `WatchPartyHostModal` port was attempted. Hosting remains Electron-only.
+2. **Per-source sandbox policy:** ~~if diagnosis shows sandbox breaks only some providers~~ **Resolved 2026-07-07** — Videasy confirmed to hard-block sandboxed iframes, so a per-source `sandbox` field in `PLAYER_SOURCES` is the approach (implemented). Remaining sub-question (still open): whether to label non-sandboxed sources in the source picker (e.g. "may show popups") so users can prefer protected sources — not done this session.
+3. **Proxy fallback for blocked domains:** Still open — not needed once the sandbox fix resolved the reported failure; revisit only if a genuine carrier-block case turns up in device testing.
+4. **PWA scope:** **Resolved 2026-07-08** — manifest + icons + meta tags only, no service worker (avoids offline cache-invalidation complexity for a streaming app where stale cached content would be actively harmful).

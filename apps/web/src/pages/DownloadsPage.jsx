@@ -65,6 +65,7 @@ const Poster = memo(function Poster({ posterPath, size = 48 }) {
       <img
         src={imgUrl(posterPath, "w154")}
         alt=""
+        loading="lazy"
         onError={() => setErrored(true)}
         className="dl-poster"
         style={style}

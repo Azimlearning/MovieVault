@@ -4784,6 +4784,13 @@ html[data-win-titlebar][data-maximized] .main {
     color: #1a0f05 !important;
 }
 
+/* ── One Pace ──────────────────────────────────────────────────────────── */
+.onepace-arc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 24px;
+}
+
 /* ── Reduced motion — suppress new animations ─────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
     .card::before { transition: none !important; }
@@ -4956,6 +4963,14 @@ html[data-win-titlebar][data-maximized] .main {
     .detail-actions,
     .genres { justify-content: center; }
     .detail-actions .btn { min-height: 44px; }
+
+    /* One Pace — reduce outer padding, stack the arc-detail sidebar+episode
+       grid, single-column arc cards, stack episode thumb above its info */
+    .onepace-page { padding: 16px !important; }
+    .onepace-arc-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
+    .onepace-details-grid { grid-template-columns: 1fr !important; gap: 20px !important; }
+    .onepace-episode-row { flex-direction: column; }
+    .onepace-episode-thumb { width: 100% !important; height: 140px; border-right: none !important; border-bottom: 1px solid var(--border); }
 }
 
 /* Very small screens (≤ 480px) */

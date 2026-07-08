@@ -7,8 +7,11 @@
   --text: #ffffff;
   --text2: #e5e5e5;
   --text3: #aaaaaa;
-  --red: #e50914;
-  --red-hover: #b80710;
+  --accent: #ff8a3d;
+  --accent-hover: #e8752c;
+  /* legacy alias — kept in sync so nothing silently breaks if a rule still uses it */
+  --red: var(--accent);
+  --red-hover: var(--accent-hover);
   --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
@@ -88,12 +91,12 @@ body {
 }
 
 .form-input:focus {
-  border-color: var(--red);
+  border-color: var(--accent);
 }
 
 .btn-primary {
   width: 100%;
-  background: var(--red);
+  background: var(--accent);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -106,7 +109,7 @@ body {
 }
 
 .btn-primary:hover {
-  background: var(--red-hover);
+  background: var(--accent-hover);
 }
 
 .btn-primary:disabled {
@@ -233,8 +236,8 @@ body {
 }
 
 .chat-bubble.self .chat-text {
-  background: var(--red);
-  border-color: var(--red);
+  background: var(--accent);
+  border-color: var(--accent);
   color: #fff;
   border-bottom-right-radius: 2px;
 }
@@ -270,11 +273,11 @@ body {
 }
 
 .chat-input:focus {
-  border-color: var(--red);
+  border-color: var(--accent);
 }
 
 .chat-send-btn {
-  background: var(--red);
+  background: var(--accent);
   color: #fff;
   border: none;
   border-radius: 50%;
@@ -288,7 +291,7 @@ body {
 }
 
 .chat-send-btn:hover {
-  background: var(--red-hover);
+  background: var(--accent-hover);
 }
 
 /* Social & Reaction Buttons */
@@ -396,4 +399,47 @@ body {
   z-index: 1000;
   gap: 16px;
   text-align: center;
+}
+
+.join-logo {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+/* ── Mobile ────────────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .join-card {
+    padding: 28px 20px;
+  }
+}
+
+@media (max-width: 900px) {
+  /* Touch targets — minimum 44px */
+  .react-btn,
+  .hand-btn {
+    min-height: 44px;
+  }
+
+  .chat-send-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .chat-input {
+    min-height: 44px;
+  }
+
+  /* Safe-area clearance for iOS home indicator / notch */
+  .chat-footer {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .join-container {
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .emoji-floating-track {
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  }
 }

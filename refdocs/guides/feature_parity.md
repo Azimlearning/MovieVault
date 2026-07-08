@@ -11,10 +11,12 @@
 
 | Component | Electron (`src/`) | Web (`apps/web/src/`) | Notes |
 |-----------|-------------------|----------------------|-------|
-| `HeroBanner` | ✅ | 🔄 | Web version exists, being updated to match V2 |
-| `CastRow` | ✅ | 🔄 | Web version exists, being updated |
-| `SimilarRow` | ✅ | 🔄 | Web version exists, being updated |
-| `RatingBadge` | ✅ | 🔄 | Web version exists, being updated |
+| `HeroBanner` | ✅ | ✅ | Ported, V3-restyled (`92c5b95`) |
+| `CastRow` | ✅ | ✅ | Ported, V3-restyled |
+| `SimilarRow` | ✅ | ✅ | Ported, V3-restyled |
+| `RatingBadge` | ✅ | ✅ | Ported, V3-restyled |
+| `HeroQuickPicks` | ✅ | ✅ | New in V3 — ported directly, no Electron-specific code to strip |
+| `GenreBrowser` | ✅ | ✅ | New in V3 — identical logic in both |
 | `MediaCard` + InfoPopout | ✅ | ✅ | Ported |
 | `TrendingCarousel` | ✅ | ✅ | Ported |
 | `TrailerModal` | ✅ | ✅ | Ported |
@@ -32,10 +34,10 @@
 | `BlockedStatsModal` | ✅ | ⚠️ | Exists but `getBlockStats` returns `{total:0}` on web |
 | `CloseConfirmModal` | ✅ | ⚠️ | Exists but close confirmation IPC is no-op on web |
 | `KeyboardShortcutsModal` | ✅ | ✅ | Ported |
-| `OnePacePlayer` | ✅ | ❌ | Uses Electron `<webview>` — no browser equivalent |
-| `WatchPartyHostModal` | ✅ | ❌ | Not ported |
+| `OnePacePlayer` | ✅ (webview) | ✅ | Web version is a from-scratch native HTML5 `<video>` player (not a webview port) — same controls/UX, V3-restyled, touch-to-reveal-controls added for mobile |
+| `WatchPartyHostModal` | ✅ | ❌ | Not ported — hosting is Electron-only; open question (see `refdocs/plans/PLAN_WEB_V3_POLISH.md` §5.1) whether web should ever host |
 | `WatchPartyIndicator` | ✅ | ❌ | Not ported |
-| **Skeleton components** | ✅ | ❌ | `skeletons/` subfolder missing from web; no shimmer loading |
+| **Skeleton components** | ✅ | ❌ | `skeletons/` subfolder missing from web; no shimmer loading. Still open — see `refdocs/execution/EXEC_WEB_V3_POLISH.md` Phase 2 |
 
 ---
 
@@ -43,14 +45,14 @@
 
 | Page | Electron | Web | Notes |
 |------|----------|-----|-------|
-| `HomePage` | ✅ | 🔄 | Exists; HeroBanner + trending layout being updated |
+| `HomePage` | ✅ | ✅ | Ported, V3-restyled — hero cluster + genre browser + Bento grid default |
 | `MoviePage` | ✅ | ✅ | Ported |
 | `TVPage` | ✅ | ✅ | Ported |
 | `LibraryPage` | ✅ | ✅ | Ported — localStorage-backed |
 | `SettingsPage` | ✅ | ✅ | Ported — some settings are no-ops on web |
 | `DownloadsPage` | ✅ | ⚠️ | Exists but always shows empty (downloads stubbed) |
-| `OnePacePage` | ✅ | ❌ | Not ported |
-| `OnePaceArcPage` | ✅ | ❌ | Not ported |
+| `OnePacePage` | ✅ | ✅ | Ported, V3-restyled — saga chips now use `.genre-tag`, responsive arc grid |
+| `OnePaceArcPage` | ✅ | ✅ | Ported, V3-restyled — responsive details grid, mobile episode-row stacking |
 
 ---
 
@@ -72,9 +74,9 @@
 | File downloads (yt-dlp) | ✅ | ❌ | Native only |
 | Subtitle download (Wyzie) | ✅ | ❌ | Returns error stub on web |
 | Subtitle display (in-player) | ✅ | ❌ | Depends on native player |
-| One Pace player | ✅ | ❌ | webview only |
+| One Pace player | ✅ (webview) | ✅ | Native `<video>` on web, ported and V3-restyled — not blocked on webview parity |
 | Watch Party (host) | ✅ | ❌ | Not ported; relay server also undeployed |
-| Watch Party (guest) | ✅ | ❌ | Guest app exists (`apps/party-guest/`) but host is undeployed |
+| Watch Party (guest) | ✅ | ✅ | `apps/party-guest/` — V3-restyled, iframe sandbox hardened against ad tab-hijacking, sync throttled to explicit seeks only. Host is still Electron-only and the relay server is undeployed, so guest join only works while an Electron host is running the relay-connected session. |
 | Auto-update | ✅ | ❌ | Electron only |
 | Discord Rich Presence | ✅ | ❌ | Electron only |
 | PiP (Picture-in-Picture) window | ✅ | ❌ | Electron only |
@@ -90,11 +92,11 @@
 
 ## Port Priority (suggested order)
 
-1. **Skeleton loading** — high visibility, pure UI, no Electron dependencies
-2. **HeroBanner / CastRow / SimilarRow / RatingBadge** — already in progress
-3. **One Pace** — requires replacing `<webview>` with `<iframe>` + CORS handling
-4. **Watch Party** — blocked on relay server deployment; port after P6 is deployed
+1. **Skeleton loading** — high visibility, pure UI, no Electron dependencies. Still the top open item.
+2. ~~HeroBanner / CastRow / SimilarRow / RatingBadge~~ — done (V3 port, `92c5b95`)
+3. ~~One Pace~~ — done (native `<video>` player, not a webview port; V3-restyled)
+4. **Watch Party host** — blocked on relay server deployment; guest side is ported and V3-restyled, host still needs a decision (see plan §5.1) on whether web should host at all
 
 ---
 
-*Last updated: 2026-06-17*
+*Last updated: 2026-07-08*

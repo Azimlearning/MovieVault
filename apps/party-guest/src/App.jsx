@@ -16,8 +16,60 @@ const DEFAULT_IFRAME_SANDBOX =
 const getIframeSandbox = (url) =>
   url && url.includes("videasy.net") ? undefined : DEFAULT_IFRAME_SANDBOX;
 
+// Sync throttle: iframe sources (movie/TV) can't be inspected cross-origin,
+// so drift correction works by reloading the embed URL with a new ?t=
+// timestamp. Only do that on an explicit seek (a real jump in host time) —
+// never on the periodic heartbeat, or the iframe would reload every few
+// seconds and the video would never actually play.
+const SEEK_RELOAD_THRESHOLD_SECONDS = 10;
+
+function ReelLogo({ size = 40 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="12" cy="12" r="9" fill="none" stroke="var(--accent)" strokeWidth="1.6" />
+      <g fill="var(--accent)">
+        <circle cx="12" cy="5.2" r="1.3" />
+        <circle cx="12" cy="18.8" r="1.3" />
+        <circle cx="5.2" cy="12" r="1.3" />
+        <circle cx="18.8" cy="12" r="1.3" />
+        <circle cx="7.4" cy="7.4" r="1.3" />
+        <circle cx="16.6" cy="16.6" r="1.3" />
+      </g>
+      <circle cx="12" cy="12" r="2.2" fill="var(--accent)" />
+    </svg>
+  );
+}
+
+function WifiOffIcon({ size = 36 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M2 2l20 20" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M8.5 16.5a5 5 0 0 1 6.2-.7M5.5 12.5a10 10 0 0 1 3.4-2.3M12 20h.01" stroke="var(--text2)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M18.5 12.5a10 10 0 0 0-2.6-2M2.5 8.5a15 15 0 0 1 4-2.6" stroke="var(--text2)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function VolumeUpIcon({ size = 28 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M4 9v6h4l5 4V5L8 9H4z" fill="var(--accent)" />
+      <path d="M16.5 8.5a5 5 0 0 1 0 7M19.5 6a9 9 0 0 1 0 12" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SendIcon({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M3 11.5L20.5 3 12 20.5l-2.2-6.8L3 11.5z" fill="currentColor" />
+    </svg>
+  );
+}
+
 export default function App() {
   const [sessionId, setSessionId] = useState("");
+  const [sessionIdFromLink, setSessionIdFromLink] = useState(false);
   const [sessionCode, setSessionCode] = useState("");
   const [displayName, setDisplayName] = useState(() => localStorage.getItem("party_displayName") || "");
   const [joined, setJoined] = useState(false);
@@ -45,6 +97,7 @@ export default function App() {
 
   const videoRef = useRef(null); // for native onepace playback
   const chatEndRef = useRef(null);
+  const lastSyncedTimeRef = useRef(0); // last hostTime an iframe reload was issued for
 
   // Parse session ID from path: /join/{id}
   useEffect(() => {
@@ -52,6 +105,7 @@ export default function App() {
     const id = parts[2] || urlParam("session");
     if (id) {
       setSessionId(id);
+      setSessionIdFromLink(true);
     }
   }, []);
 
@@ -230,6 +284,7 @@ export default function App() {
         url += `${sep}t=${Math.floor(time)}`;
       }
       setIframeUrl(url);
+      lastSyncedTimeRef.current = time;
     }
   };
 
@@ -252,17 +307,19 @@ export default function App() {
         }
       }
     } else {
-      // Iframe sync (Movie/TV)
-      // Since we cannot observe iframe player currentTime directly, we do timestamp updates 
-      // when the host triggers significant seeks/play. We reload/seek the URL with the parameter.
-      // To avoid constant loop reloading on minor heartbeats, only sync if it was a SEEK or PLAY/PAUSE change
-      if (ws) {
-        // Build new URL
+      // Iframe sync (Movie/TV) — cross-origin content can't be inspected, so
+      // we can't observe the iframe's actual currentTime. Only reload the
+      // embed URL (with a fresh ?t= timestamp) on an explicit seek — a real
+      // jump in host time — never on the periodic heartbeat, or the iframe
+      // would reload every few seconds and playback would never settle.
+      const drift = Math.abs(hostTime - lastSyncedTimeRef.current);
+      if (drift > SEEK_RELOAD_THRESHOLD_SECONDS) {
         let url = titleInfo?.embedUrl || "";
         if (url) {
           const sep = url.includes("?") ? "&" : "?";
           url += `${sep}t=${Math.floor(hostTime)}`;
           setIframeUrl(url);
+          lastSyncedTimeRef.current = hostTime;
         }
       }
     }
@@ -334,12 +391,14 @@ export default function App() {
     return (
       <div className="join-container">
         <form className="join-card" onSubmit={handleJoin}>
-          <div style={{ color: "var(--red)", fontSize: 40, marginBottom: 14 }}>🍿</div>
+          <div className="join-logo">
+            <ReelLogo />
+          </div>
           <h1 className="join-title">Join Watch Party</h1>
           <p className="join-subtitle">Enter your name and join the group stream</p>
 
           {error && (
-            <div style={{ color: "var(--red)", fontSize: 13, background: "rgba(229,9,20,0.1)", border: "1px solid rgba(229,9,20,0.2)", padding: 10, borderRadius: 8, marginBottom: 16 }}>
+            <div style={{ color: "var(--accent)", fontSize: 13, background: "rgba(255,138,61,0.1)", border: "1px solid rgba(255,138,61,0.2)", padding: 10, borderRadius: 8, marginBottom: 16 }}>
               {error}
             </div>
           )}
@@ -356,17 +415,19 @@ export default function App() {
             />
           </div>
 
-          <div className="form-group">
-            <label className="form-label">Session ID</label>
-            <input
-              type="text"
-              placeholder="UUID from host link"
-              value={sessionId}
-              onChange={(e) => setSessionId(e.target.value)}
-              className="form-input"
-              required
-            />
-          </div>
+          {!sessionIdFromLink && (
+            <div className="form-group">
+              <label className="form-label">Session ID</label>
+              <input
+                type="text"
+                placeholder="UUID from host link"
+                value={sessionId}
+                onChange={(e) => setSessionId(e.target.value)}
+                className="form-input"
+                required
+              />
+            </div>
+          )}
 
           <div className="form-group">
             <label className="form-label">6-Char Code</label>
@@ -374,8 +435,10 @@ export default function App() {
               type="text"
               placeholder="e.g. A4G9KP"
               value={sessionCode}
-              onChange={(e) => setSessionCode(e.target.value)}
+              onChange={(e) => setSessionCode(e.target.value.toUpperCase())}
               className="form-input"
+              autoComplete="off"
+              autoCapitalize="characters"
               maxLength={6}
               required
             />
@@ -398,7 +461,7 @@ export default function App() {
         {/* Host Disconnected Overlay */}
         {hostDisconnected && (
           <div className="connection-overlay">
-            <div style={{ fontSize: 40 }}>📡</div>
+            <WifiOffIcon size={40} />
             <h2 style={{ margin: 0 }}>Host Disconnected</h2>
             <p style={{ margin: 0, color: "var(--text3)", fontSize: 14 }}>
               Waiting for host to reconnect... Disconnecting in {reconnectCountdown}s
@@ -409,7 +472,7 @@ export default function App() {
         {/* Click to start autoplay overlay */}
         {needsClick && isOnePace && (
           <div className="autoplay-overlay">
-            <div style={{ fontSize: 32 }}>🔊</div>
+            <VolumeUpIcon size={32} />
             <h2 style={{ margin: 0 }}>Watch Party Synced</h2>
             <p style={{ margin: 0, color: "var(--text3)", fontSize: 13 }}>
               Browser policy requires user interaction before autoplaying video with sound.
@@ -492,11 +555,11 @@ export default function App() {
           {/* Reaction presets */}
           <div className="reactions-row">
             {["❤️", "😂", "😱", "🔥", "🤯", "👏"].map(emoji => (
-              <button key={emoji} onClick={() => sendReaction(emoji)} className="react-btn">
+              <button key={emoji} onClick={() => sendReaction(emoji)} className="react-btn" aria-label={`React with ${emoji}`}>
                 {emoji}
               </button>
             ))}
-            <button onClick={sendHandRaise} className="hand-btn" title="Raise Hand">
+            <button onClick={sendHandRaise} className="hand-btn" title="Raise Hand" aria-label="Raise hand">
               ✋
             </button>
           </div>
@@ -510,8 +573,8 @@ export default function App() {
               className="chat-input"
               maxLength={200}
             />
-            <button type="submit" className="chat-send-btn">
-              ➔
+            <button type="submit" className="chat-send-btn" aria-label="Send message">
+              <SendIcon size={16} />
             </button>
           </form>
         </div>

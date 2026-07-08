@@ -70,7 +70,7 @@
 }
 
 .onepace-control-btn:hover {
-  color: var(--red, #e50914);
+  color: var(--accent);
 }
 
 .onepace-control-btn:active {
@@ -95,7 +95,7 @@
 
 .onepace-progress-bar {
   height: 100%;
-  background: var(--red, #e50914);
+  background: var(--accent);
   border-radius: 3px;
   position: relative;
 }
@@ -165,9 +165,9 @@
 }
 
 .onepace-dropdown-item.active {
-  color: var(--red, #e50914);
+  color: var(--accent);
   font-weight: 600;
-  background: rgba(229, 9, 20, 0.12);
+  background: rgba(255, 138, 61, 0.15);
 }
 
 .onepace-volume-container {
@@ -181,7 +181,7 @@
   height: 4px;
   opacity: 0;
   transition: width 0.2s ease, opacity 0.2s ease;
-  accent-color: var(--red, #e50914);
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -210,7 +210,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--red, #e50914);
+  color: var(--accent);
   margin-bottom: 6px;
 }
 
@@ -255,7 +255,7 @@
 .onepace-fallback-title {
   font-size: 18px;
   font-weight: 700;
-  color: var(--red, #e50914);
+  color: var(--accent);
   margin: 0;
 }
 
@@ -281,4 +281,46 @@
   z-index: 9999999;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
   pointer-events: none;
+}
+
+/* ── Mobile ────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .onepace-controls-overlay {
+    padding: 14px 12px calc(14px + env(safe-area-inset-bottom, 0px));
+    gap: 8px;
+  }
+
+  .onepace-controls-row { flex-wrap: wrap; gap: 8px; }
+  .onepace-controls-group { gap: 8px; }
+
+  .onepace-control-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Volume slider is hover-reveal on desktop — touch has no hover, so keep
+     it visible (compact) instead of permanently collapsed to width:0 */
+  .onepace-volume-slider {
+    width: 50px !important;
+    opacity: 1 !important;
+  }
+
+  .onepace-time-display { min-width: 0; font-size: 12px; }
+
+  .onepace-up-next {
+    right: 12px;
+    left: 12px;
+    bottom: 90px;
+    width: auto;
+    padding: 14px;
+  }
+
+  .onepace-fallback {
+    width: calc(100vw - 40px);
+    padding: 20px;
+  }
+
+  .onepace-dropdown-menu {
+    min-width: 100px;
+  }
 }

@@ -153,7 +153,7 @@ export default function Sidebar({
                 >
                   <div className="saved-row-thumb">
                     {item.poster_path ? (
-                      <img src={imgUrl(item.poster_path, "w200")} alt={title} />
+                      <img src={imgUrl(item.poster_path, "w200")} alt={title} loading="lazy" />
                     ) : (
                       <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface3)", color: "var(--text3)" }}>
                         <FilmIcon />
@@ -206,7 +206,12 @@ export default function Sidebar({
 
 function NavBtn({ active, onClick, icon, label, badge, shortcut }) {
   return (
-    <button className={`nav-btn${active ? " active" : ""}`} onClick={onClick}>
+    <button
+      className={`nav-btn${active ? " active" : ""}`}
+      onClick={onClick}
+      aria-label={label}
+      aria-current={active ? "page" : undefined}
+    >
       {icon}
       <span className="nav-btn-label">{label}</span>
       {shortcut && (

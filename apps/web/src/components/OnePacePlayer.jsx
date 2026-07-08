@@ -301,6 +301,7 @@ export default function OnePacePlayer({
       ref={containerRef}
       className={`onepace-player-container ${showControls ? "show-controls" : ""}`}
       onMouseMove={handleMouseMove}
+      onTouchStart={handleMouseMove}
       style={{ cursor: showControls ? "default" : "none" }}
     >
       {showControls && (
@@ -339,7 +340,7 @@ export default function OnePacePlayer({
         <div className="onepace-fallback">
           <h2 className="onepace-fallback-title">Stream Offline</h2>
           <p className="onepace-fallback-text">{playError}</p>
-          <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+          <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
             <button onClick={copyPixeldrainLink} className="btn btn-primary" style={{ padding: "8px 16px" }}>
               Copy Pixeldrain Link
             </button>

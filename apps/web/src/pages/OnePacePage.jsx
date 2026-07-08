@@ -134,16 +134,16 @@ export default function OnePacePage({ progress = {}, onSelectArc }) {
 
   if (error) {
     return (
-      <div style={{ padding: 60, textAlign: "center", color: "var(--red)" }}>
+      <div style={{ padding: 60, textAlign: "center", color: "var(--danger)" }}>
         ⚠ Failed to load One Pace: {error}
       </div>
     );
   }
 
   return (
-    <div style={{ padding: "30px 40px", color: "var(--text)" }}>
+    <div className="onepace-page" style={{ padding: "30px 40px", color: "var(--text)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 24 }}>
-        <StrawHatIcon size={36} color="var(--red)" />
+        <StrawHatIcon size={36} color="var(--accent)" />
         <div>
           <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, fontFamily: "var(--font-title, Outfit)" }}>
             One Pace
@@ -154,38 +154,14 @@ export default function OnePacePage({ progress = {}, onSelectArc }) {
         </div>
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          overflowX: "auto",
-          paddingBottom: 16,
-          marginBottom: 24,
-          borderBottom: "1px solid var(--border)",
-          scrollbarWidth: "none"
-        }}
-        className="hide-scrollbar"
-      >
+      <div className="genre-chip-row" style={{ paddingBottom: 16, marginBottom: 24, borderBottom: "1px solid var(--border)" }}>
         {SAGAS.map(saga => {
           const active = selectedSaga === saga;
           return (
             <button
               key={saga}
+              className={`genre-tag${active ? " genre-tag--active" : ""}`}
               onClick={() => setSelectedSaga(saga)}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 20,
-                border: active ? "1px solid var(--red)" : "1px solid var(--border)",
-                background: active ? "rgba(229,9,20,0.15)" : "var(--surface2)",
-                color: active ? "var(--red)" : "var(--text2)",
-                fontSize: 13,
-                fontWeight: active ? 600 : 400,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-                transition: "all 0.2s"
-              }}
-              onMouseEnter={e => { if (!active) e.currentTarget.style.background = "var(--surface3)"; }}
-              onMouseLeave={e => { if (!active) e.currentTarget.style.background = "var(--surface2)"; }}
             >
               {saga}
             </button>
@@ -198,7 +174,7 @@ export default function OnePacePage({ progress = {}, onSelectArc }) {
           No arcs found for the selected Saga.
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 24 }}>
+        <div className="onepace-arc-grid">
           {sortedArcs.map(arc => {
             const saga = SAGA_MAP[arc.id] || "East Blue";
             const gradient = SAGA_GRADIENTS[saga] || SAGA_GRADIENTS["East Blue"];
@@ -223,7 +199,7 @@ export default function OnePacePage({ progress = {}, onSelectArc }) {
                 onMouseEnter={e => {
                   e.currentTarget.style.transform = "translateY(-4px)";
                   e.currentTarget.style.boxShadow = "0 12px 24px rgba(0,0,0,0.3)";
-                  e.currentTarget.style.borderColor = "var(--red, #e50914)";
+                  e.currentTarget.style.borderColor = "var(--accent)";
                 }}
                 onMouseLeave={e => {
                   e.currentTarget.style.transform = "translateY(0)";
@@ -295,7 +271,7 @@ export default function OnePacePage({ progress = {}, onSelectArc }) {
                         <span>{stats.percent}% ({stats.watchedCount}/{arc.episodeCount} ep)</span>
                       </div>
                       <div style={{ background: "var(--surface3)", height: 4, borderRadius: 2, overflow: "hidden" }}>
-                        <div style={{ background: "var(--red, #e50914)", height: "100%", width: `${stats.percent}%` }} />
+                        <div style={{ background: "var(--accent)", height: "100%", width: `${stats.percent}%` }} />
                       </div>
                     </div>
                   )}

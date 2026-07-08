@@ -153,3 +153,12 @@
 **Why `onLoad` is the right (and only) signal available:** cross-origin iframe content can't be inspected from a browser tab (no CORS-exempt `executeJavaScript` equivalent), so `onLoad` firing is the most information web can get — it doesn't prove the content is *correct* (an error page firing `onLoad` looks the same as a real video), but it at least stops a working source from being needlessly cut off mid-timeout. The blind timeout stays in place underneath as the genuine hard-failure detector (dead host, blocked domain, iframe that never loads at all).
 
 **Scope:** Electron (`src/`) is unaffected — its `<webview>` still uses the original event wiring, which is correct there.
+
+---
+
+### ADR-015 — Party guest iframe sync throttled to explicit seeks (10s threshold)
+**Decision:** `apps/party-guest/src/App.jsx`'s `syncPlayback` only rebuilds/reloads the movie/TV iframe URL (with a fresh `?t=` timestamp) when `|hostTime − lastSyncedTime| > 10` seconds. Below that threshold — i.e. on the periodic host heartbeat — the iframe is left alone.
+
+**Why:** Guests can't observe a cross-origin iframe's actual playback position (same CORS limitation as ADR-014), so the only sync mechanism available is reloading the embed URL with a new start-time parameter. The host sends a `HOST_HEARTBEAT` every few seconds during normal playback; reloading the iframe on every heartbeat would restart the video every few seconds and it would never actually play. Reloading only on a genuine seek (a real jump in host time) fixes that while still correcting drift when the host actually skips around.
+
+**Trade-off:** Small natural playback drift between host and guest (a few seconds, accumulating between explicit seeks) is not corrected — there's no way to close it without reloading the iframe, and reloading too eagerly is worse than a few seconds of drift. `SEEK_RELOAD_THRESHOLD_SECONDS = 10` is a starting value, not measured against real usage; tune later if 10s proves too twitchy or too sluggish.

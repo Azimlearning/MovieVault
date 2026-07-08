@@ -456,7 +456,7 @@ export default function LibraryPage({
                       onClick={() => onSelect({ id: item.tmdbId, media_type: item.media_type, title: item.title, name: item.title, poster_path: item.poster_path })}
                     >
                       {item.poster_path ? (
-                        <img className="stats-forgotten-img" src={imgUrl(item.poster_path, "w92")} alt="" />
+                        <img className="stats-forgotten-img" src={imgUrl(item.poster_path, "w92")} alt="" loading="lazy" />
                       ) : (
                         <div className="stats-forgotten-img" style={{ background: "var(--surface3)" }} />
                       )}

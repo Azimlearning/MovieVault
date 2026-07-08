@@ -39,7 +39,7 @@ export default function OnePaceArcPage({ arcHeader, progress = {}, onBack, onPla
         <button onClick={onBack} className="btn btn-ghost" style={{ marginBottom: 20 }}>
           <BackIcon /> Back to Arcs
         </button>
-        <div style={{ color: "var(--red)", fontSize: 16 }}>⚠ {error || "Arc details unavailable"}</div>
+        <div style={{ color: "var(--danger)", fontSize: 16 }}>⚠ {error || "Arc details unavailable"}</div>
       </div>
     );
   }
@@ -48,11 +48,11 @@ export default function OnePaceArcPage({ arcHeader, progress = {}, onBack, onPla
   const highestOriginal = getHighestOriginalEpisode(arcData.id);
 
   return (
-    <div style={{ padding: "30px 40px", color: "var(--text)" }}>
+    <div className="onepace-page" style={{ padding: "30px 40px", color: "var(--text)" }}>
       <button
         onClick={onBack}
         style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", color: "var(--text2)", fontSize: 14, cursor: "pointer", padding: "6px 12px 6px 0", marginBottom: 20, transition: "color 0.15s" }}
-        onMouseEnter={e => e.currentTarget.style.color = "var(--red)"}
+        onMouseEnter={e => e.currentTarget.style.color = "var(--accent)"}
         onMouseLeave={e => e.currentTarget.style.color = "var(--text2)"}
       >
         <BackIcon size={14} /> Back to Arcs
@@ -147,12 +147,13 @@ export default function OnePaceArcPage({ arcHeader, progress = {}, onBack, onPla
               return (
                 <div
                   key={ep.episodeNumber}
+                  className="onepace-episode-row"
                   onClick={() => onPlayEpisode(arcData, ep)}
                   style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", display: "flex", cursor: "pointer", boxShadow: "0 4px 10px rgba(0,0,0,0.1)", transition: "border-color 0.2s, background-color 0.2s" }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--red, #e50914)"; e.currentTarget.style.backgroundColor = "var(--surface2)"; }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.backgroundColor = "var(--surface2)"; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.backgroundColor = "var(--surface)"; }}
                 >
-                  <div style={{ width: 180, background: "rgba(255,255,255,0.02)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", position: "relative", flexShrink: 0 }}>
+                  <div className="onepace-episode-thumb" style={{ width: 180, background: "rgba(255,255,255,0.02)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", position: "relative", flexShrink: 0 }}>
                     <span style={{ fontSize: 36, fontWeight: 800, color: "var(--text3)", opacity: 0.2 }}>
                       #{ep.episodeNumber}
                     </span>
@@ -162,18 +163,18 @@ export default function OnePaceArcPage({ arcHeader, progress = {}, onBack, onPla
                       onMouseEnter={e => e.currentTarget.style.opacity = 1}
                       onMouseLeave={e => e.currentTarget.style.opacity = 0}
                     >
-                      <div style={{ background: "var(--red)", borderRadius: "50%", width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(229,9,20,0.4)" }}>
+                      <div style={{ background: "var(--accent)", borderRadius: "50%", width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(255,138,61,0.4)" }}>
                         <PlayIcon size={20} color="#fff" />
                       </div>
                     </div>
 
                     {pct > 0 && (
                       <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 4, background: "rgba(255,255,255,0.1)" }}>
-                        <div style={{ background: isWatched ? "#48c774" : "var(--red, #e50914)", height: "100%", width: `${pct}%` }} />
+                        <div style={{ background: isWatched ? "#48c774" : "var(--accent)", height: "100%", width: `${pct}%` }} />
                       </div>
                     )}
                     {hasStarted && (
-                      <span style={{ position: "absolute", top: 8, left: 8, fontSize: 9, fontWeight: 700, textTransform: "uppercase", background: "var(--red)", color: "#fff", padding: "2px 6px", borderRadius: 3 }}>
+                      <span style={{ position: "absolute", top: 8, left: 8, fontSize: 9, fontWeight: 700, textTransform: "uppercase", background: "var(--accent)", color: "#1a0f05", padding: "2px 6px", borderRadius: 3 }}>
                         Resume
                       </span>
                     )}

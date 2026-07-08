@@ -1,7 +1,7 @@
 # EXEC — Web V3 Polish: Mobile Fixes, One Pace & Watch Party Redesign
 
 > **Companion plan:** `refdocs/plans/PLAN_WEB_V3_POLISH.md`
-> **Status (2026-07-07):** Phase 0 and Phase 1 done. Phase 4 step 4 (party iframe sandbox hardening) done early. Phases 2, 3, and the rest of Phase 4/5 not started.
+> **Status (2026-07-08):** Phases 0–4 implemented. Phase 5 (docs) in progress — this update is part of it. Two items intentionally deferred: skeleton loading (Phase 2 step 3 — no existing skeleton component to build on, judged lower priority than the other Phase 2 items) and live device/relay testing (Phase 1 checkpoint, Phase 3/4 checkpoints — no physical device or running relay server available this session).
 > **Evidence so far:** (a) Desktop: Videasy shows an explicit **"Iframe Sandbox Detected"** error page — the `sandbox` attribute added in `92c5b95` is CONFIRMED as the Videasy breakage. (b) Mobile on cellular: "player.videasy.net refused to connect" — same cause, resolved by the Phase 1 fix (Videasy now renders with no `sandbox` attribute). (c) Mobile ~412 px: `.detail-content` had **zero** mobile breakpoint (200px poster + 40px gap + 48px×2 padding + 56px title overflow badly on a 375–412px viewport) and the player toolbar uses a hover-to-reveal pattern that doesn't work on touch — both fixed in Phase 1. See `refdocs/changelog/DECISIONS.md` ADR-013 and ADR-014 for full evidence and reasoning.
 
 ---
@@ -48,77 +48,79 @@ Full evidence and the compatibility table are in `refdocs/changelog/DECISIONS.md
 
 ---
 
-## Phase 2 — Site-wide polish (P1)
+## Phase 2 — Site-wide polish (P1) ✅ MOSTLY DONE (skeleton loading deferred)
 
-**Files:**
-- `apps/web/index.html` (meta, preconnect, manifest link)
-- `apps/web/public/manifest.webmanifest` + icon set (reuse `public/brand/` assets from the redesign branch)
-- `apps/web/src/components/MediaCard.jsx`, `HeroBanner.jsx` (lazy images, dimensions)
-- `apps/web/src/components/Sidebar.jsx` (aria-labels for bottom-nav mode)
-- New `apps/web/src/components/Skeleton.jsx` + skeleton CSS in `global.css`
-- `apps/web/src/App.jsx` (per-page `document.title`)
+**Files actually touched:**
+- `apps/web/index.html` — manifest link, apple-touch-icon, favicon-32, theme-color, mobile-web-app meta tags, description, `preconnect` to `image.tmdb.org` + `api.themoviedb.org`.
+- `apps/web/public/manifest.webmanifest` (new) + `apps/web/public/icons/{icon-192,icon-512,apple-touch-icon,favicon-32}.png` (new — generated from the existing `dist/brand/icon-1024.png` via PIL, no new art needed).
+- `apps/web/src/App.jsx` — per-page `document.title` effect.
+- `apps/web/src/components/SearchModal.jsx`, `Sidebar.jsx`, `Icons.jsx` (n/a), `apps/web/src/pages/LibraryPage.jsx`, `DownloadsPage.jsx` — added `loading="lazy"` to the poster `<img>` tags that didn't already have it (MediaCard/CastRow/TrendingCarousel/TVPage already had it).
+- `apps/web/src/components/Sidebar.jsx` — `aria-label`/`aria-current` on `NavBtn` (the label text is `display:none` on the mobile bottom-nav, which removes it from the accessibility tree too — aria-label restores it).
 
-**Steps:**
-1. Manifest + icons + `theme-color`; test "Add to Home Screen" on Android (standalone display).
-2. `document.title` effect keyed on current page/item.
-3. Skeleton rows for home sections and detail-page hero while loading; fixed heights to avoid content jumps.
-4. `loading="lazy"` + `width`/`height` attrs on all poster `<img>`; `<link rel="preconnect" href="https://image.tmdb.org">`.
-5. aria-labels on nav buttons; check focus rings survive the V3 CSS.
-6. Enable Web Analytics + Speed Insights in the Vercel dashboard (user action — flag when reached).
+**Steps actually done:**
+1. ✅ Manifest + icons + theme-color. Not tested for actual "Add to Home Screen" prompt (needs a live device).
+2. ✅ `document.title` — keyed on `page` and `selected` (the nav item), with a `PAGE_TITLES` map for static pages and the item's title/name for Movie/TV pages.
+3. ❌ **Deferred** — skeleton loading. No skeleton component exists yet in web (`AsyncBoundary` currently shows a spinner); building one from scratch plus fixed-height row placeholders is a larger, higher-risk change than the rest of Phase 2 and was judged lower priority than getting Phases 3/4 done. Left as the top Phase 2 follow-up.
+4. ✅ `loading="lazy"` audit across all poster `<img>` tags; `preconnect` added.
+5. ✅ aria-labels on nav buttons. Did not separately audit focus rings (no visual QA available this session).
+6. ❌ Not done — enabling Vercel Web Analytics/Speed Insights requires the user to click through the Vercel dashboard; flagged, not actionable by the agent.
 
-**Checkpoint:** Lighthouse mobile pass ≥90 accessibility, no CLS from row loading; installable PWA prompt appears on Android.
+**Checkpoint:** ⚠️ Partial — no Lighthouse run or device install-prompt test available this session (no browser/device access). Build is clean and the manifest/icons are correctly copied into `dist/` (verified).
 
 **Rollback:** all additive; revert per commit. Manifest removal restores current behavior.
 
 ---
 
-## Phase 3 — One Pace V3 redesign (P1)
+## Phase 3 — One Pace V3 redesign (P1) ✅ DONE (scoped down — see deviations)
 
-**Files:**
+**Files actually touched:**
 - `apps/web/src/pages/OnePacePage.jsx`, `apps/web/src/pages/OnePaceArcPage.jsx`
-- `apps/web/src/components/OnePacePlayer.jsx` (style-only; keep proxy streaming logic untouched)
-- `apps/web/src/styles/global.css` (new `.onepace-*` classes), `apps/web/src/styles/onepacePlayer.css`
+- `apps/web/src/components/OnePacePlayer.jsx` (added `onTouchStart` for mobile controls reveal + flex-wrap on the error-fallback button row)
+- `apps/web/src/styles/global.css` (new `.onepace-page`, `.onepace-arc-grid` classes + mobile overrides for `.onepace-details-grid`/`.onepace-episode-row`/`.onepace-episode-thumb`)
+- `apps/web/src/styles/onepacePlayer.css` (token swap + new mobile media query block)
 
-**Steps:**
-1. Extract inline styles into `global.css` classes (`.onepace-arc-card`, `.onepace-saga-chips`, `.onepace-arc-grid`, …).
-2. Token swap: `--red` → `--accent`; card look → `--card-radius`/`--card-shadow` + corner-bracket hover (reuse `.card::before` pattern); section headers get the film-strip divider.
-3. Saga chips → `.genre-tag`/`.genre-tag--active` classes (already in global.css).
-4. Mobile: arc grid `minmax(160px, 1fr)` at ≤768 px; chips row horizontally scrollable with edge fade; arc page episode list single-column; player controls ≥44 px.
-5. Keep the saga gradient headers (they're distinctive) but layer the V3 vault texture/film motif over them.
+**What was actually done (narrower than planned — see deviations below):**
+1. **Not a full inline-style extraction.** Only pulled out the pieces that needed a *responsive* CSS class (the saga chip row → `.genre-tag`, the arc grid, the details grid, the episode row/thumb). The rest of the inline styling (card colors, spacing, gradients) was left as-is — it already uses CSS custom properties (`var(--surface)`, `var(--border)`, etc.) so it already re-themes correctly; rewriting it into named classes wasn't necessary to hit the acceptance criteria and would have been a much larger, riskier diff for a styling-only phase with no visual QA available.
+2. **Token swap done:** every `var(--red)` / `var(--red, #e50914)` / hardcoded `#e50914`-family reference across `OnePacePage.jsx`, `OnePaceArcPage.jsx`, and `onepacePlayer.css` replaced with `var(--accent)` (or `var(--danger)` for the two genuine error-state messages, which are semantically errors, not brand accents).
+3. **Not done:** corner-bracket hover (`.card::before` reuse) and the film-strip section divider on One Pace cards. These are Bento-card-specific motifs (`.card` class); the One Pace arc cards are a different bespoke component (saga-gradient headers), and forcing the `.card::before` pattern onto them would need a nontrivial adaptation. Deferred — not blocking, purely a polish gap.
+4. **Saga chips → `.genre-tag`/`.genre-tag--active`:** done, replacing ~30 lines of manual inline hover-state JS with two className toggles.
+5. **Mobile:** `.onepace-arc-grid` → `minmax(160px, 1fr)` at ≤768px (as planned); `.onepace-details-grid` (the 300px-sidebar + episode-list grid) collapses to a single column; `.onepace-episode-row` stacks the thumb above the info instead of a fixed-180px side column; `.onepace-episode-thumb` goes full-width/140px-tall. Chips use the existing `.genre-chip-row` (`flex-wrap`, not horizontal scroll — judged better touch UX than a scroll rail for an 11-item list that wraps to 2–3 rows fine).
+6. **Player mobile fix beyond the original plan:** found the custom One Pace video player's controls use a hover-to-reveal pattern (`onMouseMove` shows them, auto-hides after 3s) with no touch equivalent — added `onTouchStart={handleMouseMove}` so tapping the player reveals controls on mobile, plus CSS to keep the volume slider (also hover-reveal on desktop) visible on touch, and made the "Stream Offline" fallback card and its button row responsive (was a fixed 440px box that would overflow a phone screen).
+7. Kept the saga gradient headers as-is (per plan step 5) — no new vault texture/film-strip layered on top; scoped out for the same reason as item 3.
 
-**Checkpoint:** zero `--red` references in One Pace files; renders at 360 px without horizontal scroll; episode streams + records progress on a real device (test checklist C from the plan, results logged).
+**Checkpoint:** ✅ zero `--red` references remain (grepped clean). ✅ CSS-verified responsive at the class level (no horizontal-scroll-causing fixed widths left unguarded on mobile). ❌ Not device-tested — episode streaming + progress recording on a real phone (test checklist C) requires a live device, not available this session.
 
 **Rollback:** styling-only phase — revert the commit; data/logic untouched.
 
 ---
 
-## Phase 4 — MovieVault Party guest redesign (P1)
+## Phase 4 — MovieVault Party guest redesign (P1) ✅ DONE (code); device/relay test still open
 
-**Files:**
+**Files actually touched:**
 - `apps/party-guest/src/App.jsx`, `apps/party-guest/src/index.css`
-- `apps/party-guest/src/App.css` (delete dead Vite template rules)
-- `apps/party-guest/index.html` (title, theme-color, viewport-fit=cover)
+- `apps/party-guest/src/App.css` — **deleted** (was already dead: not imported by `main.jsx` or `App.jsx`, confirmed with a repo-wide grep before removing)
+- `apps/party-guest/index.html` (viewport-fit=cover, theme-color, description meta)
 
-**Steps:**
-1. **Join flow:** if session ID parsed from `/join/{id}` URL → hide the Session ID field (show it only in fallback manual mode). Auto-uppercase the 6-char code input, `autocomplete="off"`, numeric-friendly layout.
-2. **V3 restyle:** port the amber token block from `apps/web/src/styles/global.css` `:root` into `index.css`; join card gets the vault card look; replace all emoji glyphs with inline SVG icons (copy needed icons from `apps/web/src/components/Icons.jsx` — party-guest has no shared import path).
-3. Delete `App.css` template scaffolding (`.hero`, `#next-steps`, `.ticks`, …) — verify nothing references it, then remove the import.
+**What was actually done:**
+1. ✅ **Join flow:** `sessionIdFromLink` state set alongside `sessionId` in the `/join/{id}` URL-parsing effect; the Session ID field is conditionally hidden when it's true (manual-entry fallback still shows it if a guest opens the bare app URL). Code input auto-uppercases on change (`.toUpperCase()`) and got `autoComplete="off"` + `autoCapitalize="characters"`.
+2. ✅ **V3 restyle:** `index.css` `:root` — `--red`/`--red-hover` replaced with `--accent: #ff8a3d`/`--accent-hover`, with `--red`/`--red-hover` kept as CSS-variable aliases pointing at the new ones (belt-and-braces in case anything outside the reviewed files still references them) then every direct `var(--red...)` usage in the rest of the file was also swapped to `var(--accent...)` directly. Emoji→SVG: 🍿 (join logo) → inline reel-icon SVG matching the sidebar logo's motif; 📡 (host-disconnected) → wifi-off SVG; 🔊 (autoplay-blocked overlay) → volume SVG; ➔ (chat send button) → paper-plane SVG. The reaction emoji row (❤️😂😱🔥🤯👏) and ✋ (hand-raise) were deliberately **kept as emoji** — those are the actual reaction content the guest sends, not decorative chrome, so replacing them would change the feature, not just its icon.
+3. ✅ Deleted `App.css` (Vite template scaffolding — `.hero`, `#next-steps`, `.ticks`, the counter demo styles). Confirmed unused first (`grep -rn "App.css"` across `apps/party-guest/src` and `index.html` returned nothing) before removing.
 4. ✅ **DONE (2026-07-07, done early alongside Phase 1):** Iframe hardening — party-guest can't import `apps/web`'s `sourceSandbox()`, so it got its own small `getIframeSandbox(url)` helper keyed on `url.includes("videasy.net")` (same null-for-Videasy verdict from Phase 0), plus the full `allow="fullscreen; autoplay; encrypted-media; picture-in-picture"` list (was previously just `"autoplay; encrypted-media"`, no fullscreen permission at all) + `allowFullScreen`.
-5. **Sync throttle:** in `syncPlayback`, only rebuild the iframe URL when `|hostTime − lastSyncedTime| > 10 s` (explicit seek), never on heartbeat; document the constant.
-6. **Mobile layout:** stacked player/chat with `env(safe-area-inset-bottom)`; reaction buttons ≥44 px; test the autoplay overlay flow on iOS Safari.
+5. ✅ **Sync throttle:** added `lastSyncedTimeRef` and a `SEEK_RELOAD_THRESHOLD_SECONDS = 10` constant; the iframe branch of `syncPlayback` now only rebuilds/reloads the iframe URL when `|hostTime − lastSyncedTimeRef.current| > 10`, and `updatePlayerSource` (initial title load / title change) also updates the ref so the first heartbeat after a title change doesn't immediately reload again.
+6. ✅ **Mobile layout:** `.chat-footer` and `.join-container` get `env(safe-area-inset-bottom)` padding; `.react-btn`/`.hand-btn`/`.chat-send-btn`/`.chat-input` bumped to 44px touch targets in a new `@media (max-width: 900px)` block (matching the existing `.app-layout` breakpoint already in the file). ❌ Not tested on iOS Safari — no device available.
 
-**Checkpoint:** join via link on a phone without typing the UUID; run test matrix D from the plan with two guests (one desktop, one phone) against the live Railway relay; results logged in changelog.
+**Checkpoint:** ✅ code review confirms join-without-typing-the-UUID works when `sessionIdFromLink` is true; ✅ `npm run build` clean. ❌ Test matrix D (two guests, live Railway relay) not run — requires an active Electron host + relay connection + a second device, none available this session.
 
 **Rollback:** party-guest deploys independently — revert and redeploy `apps/party-guest` alone; web app unaffected.
 
 ---
 
-## Phase 5 — Docs & close-out
+## Phase 5 — Docs & close-out ✅ DONE (this update)
 
-**Steps:**
-1. Update `refdocs/guides/feature_parity.md` — One Pace pages/player ARE ported to web (doc currently says otherwise); note Party guest redesign state.
-2. DECISIONS.md entry for the sandbox/per-source policy and the sync-throttle constant.
-3. CHANGELOG entries per phase (mandatory).
-4. Resolve plan open questions §5.1–5.4 with the user before/during the relevant phase — 5.1 (web hosting) gates any Party work in `apps/web/src`; 5.2 gates Phase 1 step 1; 5.3 only if carrier block confirmed; 5.4 gates Phase 2 step 1 scope.
+**What was actually done:**
+1. ✅ `refdocs/guides/feature_parity.md` — corrected every stale row: HeroBanner/CastRow/SimilarRow/RatingBadge now ✅ (were 🔄 "being updated"); `OnePacePlayer` now ✅ with a note that it's a from-scratch native `<video>` player, not a webview port (the old row implied it was blocked on webview parity, which was never true for the web version); `OnePacePage`/`OnePaceArcPage` now ✅ (were ❌ "Not ported"); Watch Party guest row now ✅ (was ❌); Port Priority list updated to reflect skeleton loading as the sole remaining top item.
+2. ✅ DECISIONS.md ADR-013 (sandbox policy) and ADR-014 (webview-event bug) were already written during the Phase 0/1 session; not duplicated here.
+3. ✅ CHANGELOG entries added for Phase 2/3/4/5 work (this session).
+4. ⚠️ Plan open questions: §5.2 and §5.4 resolved (see plan doc); §5.1 (web-hosted parties) and §5.3 (proxy fallback) remain genuinely open — not resolved because they need a user decision, not more implementation.
 
-**Checkpoint:** all plan acceptance criteria (§4) checked off.
+**Checkpoint:** ✅ acceptance criteria §4 re-checked against what shipped — see the plan doc for the itemized ✅/⚠️/❌ status. Two criteria are honestly incomplete: the live test checklists (§4.6) and physical-device re-verification (§4.1/§4.2/§4.4) — both require hardware/network access this coding session didn't have. Flagging clearly rather than claiming false completion.

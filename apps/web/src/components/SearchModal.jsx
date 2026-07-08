@@ -380,6 +380,7 @@ export default function SearchModal({ apiKey, onSelect, onClose, offline }) {
                         : "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='58'%3E%3Crect fill='%23222' width='40' height='58'/%3E%3C/svg%3E"
                     }
                     alt=""
+                    loading="lazy"
                   />
                   <div className="search-result-info">
                     <div className="search-result-title">{r.title || r.name}</div>
@@ -426,6 +427,7 @@ export default function SearchModal({ apiKey, onSelect, onClose, offline }) {
                         : "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='58'%3E%3Crect fill='%23222' width='40' height='58'/%3E%3C/svg%3E"
                     }
                     alt=""
+                    loading="lazy"
                   />
                   <div className="search-result-info">
                     <div className="search-result-title">{r.title || r.name}</div>
@@ -495,6 +497,7 @@ export default function SearchModal({ apiKey, onSelect, onClose, offline }) {
                           : "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='58'%3E%3Crect fill='%23222' width='40' height='58'/%3E%3C/svg%3E"
                       }
                       alt=""
+                      loading="lazy"
                       style={{ width: 34, height: 48 }}
                     />
                     <div className="search-result-info">
