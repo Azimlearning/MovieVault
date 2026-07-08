@@ -4912,14 +4912,50 @@ html[data-win-titlebar][data-maximized] .main {
         min-width: 44px;
     }
 
+    /* Player toolbar (source pill, blocked-stats shield, open-external, download)
+       is hover-to-reveal on desktop (see .player-wrap:hover rule) — touch has no
+       real hover, so on mobile it must stay always-visible instead of hidden
+       or stuck-open after a tap. */
+    .player-wrap .player-overlay-btn,
+    .player-wrap .player-overlay-group {
+        opacity: 1 !important;
+    }
+
+    /* Mark-progress buttons — bump touch target above the 12px/5px-14px inline
+       styles set in MoviePage/TVPage (CSS wins because those props aren't
+       set inline). */
+    .progress-mark-row {
+        gap: 10px;
+    }
+    .progress-mark-row .btn {
+        min-height: 44px;
+        padding: 10px 16px;
+    }
+
     /* Hero banner smaller on mobile */
     .hero { height: 300px; }
     .hero-content { padding: 20px 16px; }
     .hero-title { font-size: 28px !important; }
 
-    /* Detail pages — reduce padding */
-    .detail-hero { height: 240px; }
-    .detail-content { padding: 16px; }
+    /* Detail pages (Movie/TV) — stack poster + info instead of the desktop
+       flex row, which otherwise overflows badly (200px poster + 40px gap +
+       48px*2 padding leaves no room for a 56px title on a ~375px viewport). */
+    .detail-hero { height: auto; min-height: 0; }
+    .detail-content {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 14px;
+        padding: 20px 16px 16px;
+    }
+    .detail-poster { width: 140px; }
+    .detail-info { width: 100%; }
+    .detail-title { font-size: 28px; margin-bottom: 10px; }
+    .detail-meta { justify-content: center; margin-bottom: 14px; }
+    .detail-overview { max-width: 100%; }
+    .detail-actions,
+    .genres { justify-content: center; }
+    .detail-actions .btn { min-height: 44px; }
 }
 
 /* Very small screens (≤ 480px) */

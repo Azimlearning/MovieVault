@@ -6,6 +6,16 @@ const RELAY_HOST = isLocal ? "localhost:3000" : "movievault-party.up.railway.app
 const HTTP_URL = `${isLocal ? "http" : "https"}://${RELAY_HOST}`;
 const WS_URL   = `${isLocal ? "ws"   : "wss"}://${RELAY_HOST}`;
 
+// Blocks window.open()/parent navigation (ad tab-hijacking) on embeds that
+// tolerate it. Videasy actively refuses to render inside any sandboxed
+// iframe (renders an "Iframe Sandbox Detected" error) — see
+// refdocs/changelog/DECISIONS.md for the test evidence — so it gets no
+// sandbox attribute at all and keeps its native popup ads.
+const DEFAULT_IFRAME_SANDBOX =
+  "allow-scripts allow-forms allow-same-origin allow-presentation allow-modals";
+const getIframeSandbox = (url) =>
+  url && url.includes("videasy.net") ? undefined : DEFAULT_IFRAME_SANDBOX;
+
 export default function App() {
   const [sessionId, setSessionId] = useState("");
   const [sessionCode, setSessionCode] = useState("");
@@ -423,8 +433,9 @@ export default function App() {
           <iframe
             src={iframeUrl}
             className="party-video"
+            sandbox={getIframeSandbox(iframeUrl)}
             allowFullScreen
-            allow="autoplay; encrypted-media"
+            allow="fullscreen; autoplay; encrypted-media; picture-in-picture"
           />
         ) : (
           <div style={{ color: "var(--text3)", fontSize: 14 }}>

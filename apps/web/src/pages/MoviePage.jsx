@@ -17,6 +17,7 @@ import {
   sourceSupportsProgress,
   sourceProgressViaFrames,
   sourceIsAsync,
+  sourceSandbox,
   fetchAnilistData,
   cleanAnilistDescription,
   isAnimeContent,
@@ -766,6 +767,23 @@ export default function MoviePage({
     });
   }, [failoverQueue]);
 
+  // Real browser <iframe> load signal. Cross-origin content can't be
+  // inspected (no executeJavaScript like Electron's <webview>), so a fired
+  // onLoad is the only success signal available on web — treat it as
+  // "source is up" and stop the failover timer. Hard failures (blocked
+  // domain, dead host) are still caught by the timeout in the effect below.
+  const handleIframeLoad = useCallback(() => {
+    if (sourceIsAsync(playerSource)) {
+      setWebviewLoading(false);
+      return;
+    }
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    setWebviewLoading(false);
+    setLoadingStatus("");
+    const activeSourceId = failoverQueue[currentQueueIndex] || playerSource;
+    sourceQueue.saveLastGoodSource(item.id, null, null, activeSourceId);
+  }, [playerSource, failoverQueue, currentQueueIndex, item.id]);
+
   // Initialize queue when playing starts
   useEffect(() => {
     if (!playing) {
@@ -1484,9 +1502,10 @@ export default function MoviePage({
                       ? "about:blank"
                       : resolvedPlayerUrl || "about:blank"
                   }
-                  sandbox="allow-scripts allow-forms allow-same-origin allow-presentation allow-modals"
+                  sandbox={sourceSandbox(playerSource) || undefined}
                   allow="fullscreen; autoplay; encrypted-media; picture-in-picture"
                   allowFullScreen
+                  onLoad={handleIframeLoad}
                   style={{
                     position: "absolute",
                     inset: 0,
@@ -1509,8 +1528,9 @@ export default function MoviePage({
                     ? "about:blank"
                     : getSourceUrl(playerSource, "movie", item.id, null, null)
                 }
-                sandbox="allow-scripts allow-forms allow-same-origin allow-presentation allow-modals"
+                sandbox={sourceSandbox(playerSource) || undefined}
                 allow="fullscreen; autoplay; encrypted-media; picture-in-picture"
+                onLoad={handleIframeLoad}
                 allowFullScreen
                 style={{
                   position: "absolute",

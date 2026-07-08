@@ -22,6 +22,7 @@ import {
   sourceSupportsProgress,
   sourceProgressViaFrames,
   sourceIsAsync,
+  sourceSandbox,
   fetchAnilistData,
   fetchEpisodeGroup,
   buildAnilistSeasons,
@@ -1528,6 +1529,32 @@ export default function TVPage({
     });
   }, [failoverQueue]);
 
+  // Real browser <iframe> load signal — see MoviePage.jsx for why this
+  // replaces the Electron-only did-finish-load wiring on web.
+  const handleIframeLoad = useCallback(() => {
+    if (sourceIsAsync(playerSource)) {
+      setWebviewLoading(false);
+      return;
+    }
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    setWebviewLoading(false);
+    setLoadingStatus("");
+    const activeSourceId = failoverQueue[currentQueueIndex] || playerSource;
+    sourceQueue.saveLastGoodSource(
+      item.id,
+      selectedSeason,
+      selectedEp?.episode_number,
+      activeSourceId,
+    );
+  }, [
+    playerSource,
+    failoverQueue,
+    currentQueueIndex,
+    item.id,
+    selectedSeason,
+    selectedEp?.episode_number,
+  ]);
+
   // Initialize queue when playing starts
   useEffect(() => {
     if (!playing) {
@@ -2438,9 +2465,10 @@ export default function TVPage({
                           ? "about:blank"
                           : resolvedPlayerUrl || "about:blank"
                       }
-                      sandbox="allow-scripts allow-forms allow-same-origin allow-presentation allow-modals"
+                      sandbox={sourceSandbox(playerSource) || undefined}
                       allow="fullscreen; autoplay; encrypted-media; picture-in-picture"
                       allowFullScreen
+                      onLoad={handleIframeLoad}
                       style={{
                         position: "absolute",
                         inset: 0,
@@ -2473,9 +2501,10 @@ export default function TVPage({
                             playerEp.episode,
                           )
                     }
-                    sandbox="allow-scripts allow-forms allow-same-origin allow-presentation allow-modals"
+                    sandbox={sourceSandbox(playerSource) || undefined}
                     allow="fullscreen; autoplay; encrypted-media; picture-in-picture"
                     allowFullScreen
+                    onLoad={handleIframeLoad}
                     style={{
                       position: "absolute",
                       inset: 0,

@@ -175,6 +175,14 @@ export const tmdbFetch = async (path, apiKey) => {
 
 // ── Player Sources ────────────────────────────────────────────────────────────
 // supportsProgress: true = executeJavaScript tracking works for this source
+// sandbox: iframe `sandbox` attribute value to use for this source, or `null` to
+//   render the iframe with NO sandbox attribute at all. `null` is only for
+//   providers confirmed to actively refuse to run inside a sandboxed frame
+//   (see refdocs/changelog/DECISIONS.md for the per-source test evidence) —
+//   those sources will show unblocked popup/tab-hijack ads.
+const DEFAULT_SANDBOX =
+  "allow-scripts allow-forms allow-same-origin allow-presentation allow-modals";
+
 export const PLAYER_SOURCES = [
   {
     id: "videasy",
@@ -182,6 +190,7 @@ export const PLAYER_SOURCES = [
     tag: null,
     note: null,
     supportsProgress: true,
+    sandbox: null, // confirmed: renders "Iframe Sandbox Detected" error page when sandboxed
     movieUrl: (id) => `https://player.videasy.net/movie/${id}`,
     tvUrl: (id, season, ep) =>
       `https://player.videasy.net/tv/${id}/${season}/${ep}`,
@@ -193,6 +202,7 @@ export const PLAYER_SOURCES = [
     note: null,
     supportsProgress: true,
     progressViaFrames: true, // video is in a nested iframe, needs main-process frame query
+    sandbox: DEFAULT_SANDBOX,
     movieUrl: (id) => `https://vidsrc.to/embed/movie/${id}`,
     tvUrl: (id, season, ep) =>
       `https://vidsrc.to/embed/tv/${id}/${season}/${ep}`,
@@ -204,6 +214,7 @@ export const PLAYER_SOURCES = [
     note: "unstable",
     supportsProgress: true,
     progressViaFrames: true,
+    sandbox: DEFAULT_SANDBOX,
     movieUrl: (id) => `https://www.2embed.online/embed/movie/${id}`,
     tvUrl: (id, season, ep) =>
       `https://www.2embed.online/embed/tv/${id}/${season}/${ep}`,
@@ -215,6 +226,7 @@ export const PLAYER_SOURCES = [
     note: null,
     supportsProgress: true,
     async: true,
+    sandbox: DEFAULT_SANDBOX,
     movieUrl: (_id) => "https://allmanga.to",
     tvUrl: (_id, _season, _ep) => "https://allmanga.to",
   },
@@ -228,6 +240,9 @@ export const getSourceUrl = (sourceId, type, id, season, ep) => {
 
 export const sourceSupportsProgress = (sourceId) =>
   PLAYER_SOURCES.find((s) => s.id === sourceId)?.supportsProgress ?? false;
+
+export const sourceSandbox = (sourceId) =>
+  PLAYER_SOURCES.find((s) => s.id === sourceId)?.sandbox ?? DEFAULT_SANDBOX;
 
 export const sourceProgressViaFrames = (sourceId) =>
   PLAYER_SOURCES.find((s) => s.id === sourceId)?.progressViaFrames ?? false;

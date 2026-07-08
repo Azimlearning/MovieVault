@@ -124,3 +124,32 @@
 **Why:** Peer-to-peer WebRTC requires STUN/TURN infrastructure and has NAT traversal issues. A relay server is simpler to reason about and debug.
 
 **Status:** Code-complete but relay server is undeployed as of 2026-06-17. See `refdocs/execution/V2_EXECUTION_PLAN.md` Phase 6.
+
+---
+
+### ADR-013 — Per-source iframe `sandbox` (not a blanket policy)
+**Decision:** `PLAYER_SOURCES` (`apps/web/src/utils/api.js`) now carries a `sandbox` field per source instead of one hardcoded `sandbox` string used everywhere. `sourceSandbox(sourceId)` resolves it; `null` means the iframe renders with **no** `sandbox` attribute at all. The Party guest app (`apps/party-guest/src/App.jsx`) mirrors this with its own small `getIframeSandbox(url)` helper (it can't import from `apps/web`, being a separate deployable).
+
+**Why:** A blanket `sandbox="allow-scripts allow-forms allow-same-origin allow-presentation allow-modals"` was added to block ad tab-hijacking (no `allow-popups`/`allow-top-navigation`). Real-device + isolated local testing (2026-07-07) showed this breaks Videasy outright — it actively detects the sandbox and renders its own **"Iframe Sandbox Detected"** error page instead of the player, reproduced both on a real phone (cellular) and in an isolated single-iframe test page on desktop. Removing `sandbox` entirely for a bare Videasy test iframe played correctly (Fight Club title card rendered).
+
+**Per-source test evidence (TMDB id 550, isolated single-iframe pages, one source per page):**
+| Source | Sandboxed (current default string) | No sandbox |
+|---|---|---|
+| Videasy | "Iframe Sandbox Detected" error page — confirmed broken | Plays fine |
+| VidSrc | "This media is unavailable at the moment." — inconclusive (VidSrc's own catalog gaps show the same message; not the same distinctive sandbox-rejection page Videasy shows) | Not conclusively tested — kept sandboxed pending stronger evidence |
+| 2Embed | Loads (already tagged `note: "unstable"` in the codebase) | Confirmed to load aggressive ad/redirect scripts (`disable-devtool`, WebGL-fingerprinting ad networks `vr-gc.com`/`484r.com`/`92mim.com`) — one such script hijacked an entire test browser tab to `about:blank` during testing. This is live proof of the exact ad-hijack behavior `sandbox` exists to prevent, so 2Embed keeps sandbox on despite being adversarial. |
+
+**Decision applied:** `videasy.sandbox = null`. `vidsrc`, `2embed`, `allmanga` keep the default sandboxed string. `allow="fullscreen; autoplay; encrypted-media; picture-in-picture"` + `allowFullScreen` stay on every source unconditionally — that fix is unrelated to the sandbox issue and unaffected by it.
+
+**Trade-off:** Videasy (the default/first source in the queue) has its native popup ads and tab-hijacking back. If a future fix (e.g. a graduated sandbox ladder, or a proxy) removes the need for this exception, revert `videasy.sandbox` to the default string.
+
+---
+
+### ADR-014 — Web `<iframe>` load detection cannot mirror Electron's `<webview>` events
+**Decision:** `MoviePage.jsx`/`TVPage.jsx` add a plain `onLoad` handler directly on the player `<iframe>` to clear the loading spinner and cancel the failover timer, instead of relying on `did-finish-load`/`did-fail-load`/`executeJavaScript` (the `handleFinished`/`handleFailed` webview-event wiring carried over from the Electron port).
+
+**Why:** Those are Electron `<webview>`-only APIs — a plain DOM `<iframe>` never fires `did-finish-load`/`did-fail-load`, and `executeJavaScript` doesn't exist on it at all (caught silently by the existing try/catch). On web this meant the loading spinner never cleared on a real successful load; it only ever cleared via the blind per-source timeout (`sourceQueue.getSourceTimeout()`, default 10s), which unconditionally calls `handleFailover()` — so on web, every source change looked like a timeout-driven failure and auto-advanced to the next source after ~10s regardless of whether the current source was actually working underneath the spinner. Async sources (AllManga) had no timeout at all in that path, so the spinner could stay stuck indefinitely.
+
+**Why `onLoad` is the right (and only) signal available:** cross-origin iframe content can't be inspected from a browser tab (no CORS-exempt `executeJavaScript` equivalent), so `onLoad` firing is the most information web can get — it doesn't prove the content is *correct* (an error page firing `onLoad` looks the same as a real video), but it at least stops a working source from being needlessly cut off mid-timeout. The blind timeout stays in place underneath as the genuine hard-failure detector (dead host, blocked domain, iframe that never loads at all).
+
+**Scope:** Electron (`src/`) is unaffected — its `<webview>` still uses the original event wiring, which is correct there.

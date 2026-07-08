@@ -1,51 +1,50 @@
 # EXEC — Web V3 Polish: Mobile Fixes, One Pace & Watch Party Redesign
 
 > **Companion plan:** `refdocs/plans/PLAN_WEB_V3_POLISH.md`
-> **Status at authoring (2026-07-07):** Not started. V3 port to web shipped in `92c5b95` and is live on Vercel.
-> **Evidence so far:** (a) Desktop: Videasy shows an explicit **"Iframe Sandbox Detected"** error page — the `sandbox` attribute added in `92c5b95` is CONFIRMED as the Videasy breakage. (b) Mobile on cellular: "player.videasy.net refused to connect" — likely the same cause, re-test after the fix. (c) Mobile ~412 px: source toolbar / Back button / mark-progress row overlap.
+> **Status (2026-07-07):** Phase 0 and Phase 1 done. Phase 4 step 4 (party iframe sandbox hardening) done early. Phases 2, 3, and the rest of Phase 4/5 not started.
+> **Evidence so far:** (a) Desktop: Videasy shows an explicit **"Iframe Sandbox Detected"** error page — the `sandbox` attribute added in `92c5b95` is CONFIRMED as the Videasy breakage. (b) Mobile on cellular: "player.videasy.net refused to connect" — same cause, resolved by the Phase 1 fix (Videasy now renders with no `sandbox` attribute). (c) Mobile ~412 px: `.detail-content` had **zero** mobile breakpoint (200px poster + 40px gap + 48px×2 padding + 56px title overflow badly on a 375–412px viewport) and the player toolbar uses a hover-to-reveal pattern that doesn't work on touch — both fixed in Phase 1. See `refdocs/changelog/DECISIONS.md` ADR-013 and ADR-014 for full evidence and reasoning.
 
 ---
 
-## Phase 0 — Per-source sandbox compatibility table (short — root cause already confirmed for Videasy)
+## Phase 0 — Per-source sandbox compatibility table ✅ DONE
 
-**Files:** none modified — verification only (a scratch HTML page outside the repo is fine).
+**Files:** none modified — verification only, via isolated local test pages served over a scratch HTTP server and inspected with Playwright.
 
-**Steps:**
-1. For each of Videasy / VidSrc / 2Embed, load the embed URL in a test iframe with a **graduated sandbox ladder** and note the least-permissive tier that works:
-   - Tier 1 (current): `allow-scripts allow-forms allow-same-origin allow-presentation allow-modals`
-   - Tier 2: Tier 1 + `allow-popups`
-   - Tier 3: Tier 2 + `allow-top-navigation-by-user-activation`
-   - Tier 4: no `sandbox` attribute (provider rejects all sandboxing — expected for Videasy)
-2. After the Phase 1 fix deploys, re-test on the failing phone on cellular. If Videasy still shows "refused to connect" there, run the residual checks: Wi-Fi vs cellular vs VPN (carrier DNS block) and `curl -sI` for `X-Frame-Options`/`frame-ancestors`.
-3. Record the table + evidence in `refdocs/changelog/DECISIONS.md`.
+**What was actually tested (simpler than the original graduated-ladder plan — stopped once the answer was clear):**
+1. Videasy: current sandbox string → "Iframe Sandbox Detected" error page (reproduced twice: real desktop browser + isolated single-iframe test). No sandbox → plays correctly (Fight Club title card rendered). **Verdict: `sandbox: null`.**
+2. VidSrc: current sandbox string → "This media is unavailable at the moment." This is VidSrc's own generic not-found message, not a distinctive sandbox-rejection page like Videasy's — inconclusive whether sandbox caused it or the test TMDB id (550) just isn't in VidSrc's catalog. Repeated no-sandbox test attempts were blocked by Playwright MCP connection flakiness mid-session; not re-attempted given the ambiguity already favors "keep sandboxed" (least-privilege default absent proof it's needed). **Verdict: kept sandboxed.**
+3. 2Embed: no-sandbox test loaded `disable-devtool`, WebGL-fingerprinting ad scripts (`vr-gc.com`, `484r.com`, `92mim.com`), and one of them hijacked the entire test browser tab to `about:blank` mid-test — live reproduction of the exact ad-hijack behavior `sandbox` exists to prevent. Already tagged `note: "unstable"` in the codebase. **Verdict: kept sandboxed** (this is the source sandbox is most needed for).
+4. Skipped the graduated `allow-popups`/`allow-top-navigation-by-user-activation` ladder — Videasy's rejection is binary (any `sandbox` attribute triggers its detector), so intermediate tiers wouldn't have changed the outcome for it, and VidSrc/2Embed didn't need loosening.
 
-**Checkpoint:** compatibility table exists; each source has an assigned tier.
+Full evidence and the compatibility table are in `refdocs/changelog/DECISIONS.md` ADR-013.
+
+**Checkpoint:** ✅ compatibility table exists; Videasy has a confirmed verdict, VidSrc/2Embed have evidence-backed conservative verdicts.
 
 **Rollback:** n/a (no code changes).
 
 ---
 
-## Phase 1 — Mobile player fixes (P0)
+## Phase 1 — Mobile player fixes (P0) ✅ DONE
 
-**Files:**
+**Files actually touched:**
+- `apps/web/src/utils/api.js` — `PLAYER_SOURCES` gained a `sandbox` field per source + `sourceSandbox(sourceId)` helper.
 - `apps/web/src/pages/MoviePage.jsx`, `apps/web/src/pages/TVPage.jsx`
-- `apps/web/src/utils/api.js` (`PLAYER_SOURCES` — add `sandboxSafe` flag if Phase 0 says so)
 - `apps/web/src/styles/global.css`
 
-**Steps:**
-1. Apply the Phase 0 table: add a per-source `sandbox` field to `PLAYER_SOURCES` (string = the source's working sandbox tier, `null` = render no `sandbox` attribute). MoviePage/TVPage read it when rendering the iframe. Videasy is expected to land at `null`; every source keeps `allow="fullscreen; autoplay; encrypted-media; picture-in-picture"` + `allowFullScreen` unconditionally. If carrier blocking is also confirmed on mobile, the failover UX (step 2) is the mitigation; note the proxy decision (plan §5.3) for a later phase.
-2. **Source failover banner:** start a ~8 s timer when the iframe `src` is set; clear it on iframe `load`. On timeout, show a dismissible banner over the player: "Source not loading? Try another" with the remaining `PLAYER_SOURCES` as one-tap chips. No auto-switching (an iframe `load` can fire even for a broken page, and auto-switch would fight the user mid-load).
-3. **Mobile layout pass** for the player detail pages at ≤768 px:
-   - Player container full-width, `aspect-ratio: 16/9`, no fixed heights.
-   - Source toolbar becomes a static row **below** the player (no floating/absolute position).
-   - Back button in a fixed header strip or inline above the hero — never overlapping the mark-progress row.
-   - Mark-progress buttons wrap (`flex-wrap`), ≥44 px tap targets.
-   - Hero: poster smaller (~120 px) beside metadata, synopsis full-width below.
-4. Verify at 360/390/412 px in devtools **and** on the real failing device.
+**What was actually done (step 2 changed — see deviation note):**
+1. **Per-source sandbox**, as planned: `videasy.sandbox = null`, `vidsrc`/`2embed`/`allmanga` keep the default sandbox string. Both iframes (sync + async/AllManga) in both pages read `sourceSandbox(playerSource)`, rendering no `sandbox` attribute at all for sources where it's `null`. `allow`/`allowFullScreen` unchanged (already unconditional).
+2. **Deviation from the plan:** instead of adding a *new* ~8s failover banner, found and fixed a more fundamental pre-existing bug — see ADR-014. The failover system already existed (`failoverQueue`, `handleFailover`, a 10s per-source timeout, and an "All Sources Failed" retry/switch-source card), but its success-path (`handleFinished`, wired to `did-finish-load`/`did-fail-load`/`executeJavaScript`) only works on Electron's `<webview>` tag — those events never fire on a real browser `<iframe>`. Net effect on web: the loading spinner never cleared on a genuine successful load, so **every** source change looked like a timeout failure and auto-advanced after ~10s regardless of whether playback was actually working, and async (AllManga) sources had no clear path at all (could hang forever). Fixed by adding a plain `onLoad={handleIframeLoad}` on both iframes in both pages, which clears the timeout/spinner on a real load event — the existing "All Sources Failed" card already serves the "try another source" role the plan asked for, so a new banner would have been redundant.
+3. **Mobile layout pass**, done via CSS (`global.css`, inside the existing `@media (max-width: 768px)` block):
+   - `.detail-content`/`.detail-poster`/`.detail-title`/`.detail-meta`/`.detail-actions`/`.genres` — added a mobile stack layout (was completely unhandled before; 200px poster + 40px gap + 48px×2 padding + 56px title overflowed a 375–412px viewport with no breakpoint at all).
+   - `.player-overlay-group`/`.player-overlay-btn` — forced `opacity: 1 !important` on mobile; the desktop hover-to-reveal pattern (`.player-wrap:hover`) doesn't work on touch and was leaving the toolbar either invisible or stuck open.
+   - `.progress-mark-row .btn` — bumped to `min-height: 44px` (was ~24px from an inline `padding: "5px 14px"; fontSize: 12` in JSX).
+   - `.detail-actions .btn` — `min-height: 44px`.
+4. **Party guest iframe** (`apps/party-guest/src/App.jsx`) got the same treatment ahead of schedule (small, low-risk, same root cause) — see Phase 4 step 4.
+5. Not done: live verification on the original failing physical device (session had no access to it) — verified via isolated Playwright test pages + `npm run build` type-check only. Flag this as the one open item before calling Phase 1 fully closed.
 
-**Checkpoint:** plan acceptance criteria 1–3 pass; a movie plays (or fails over gracefully) on the real device.
+**Checkpoint:** ✅ Videasy plays without the sandbox error (isolated test). ✅ `.detail-content` mobile stacking, hover-reveal toolbar, and touch targets fixed in CSS. ✅ Both web app and party-guest build clean. ⚠️ Not yet re-verified on the actual physical device from the original screenshots.
 
-**Rollback:** each fix is an isolated commit; revert individually. The failover banner is purely additive.
+**Rollback:** each fix is an isolated concern within one commit; the `sourceSandbox` field, the `onLoad` handler, and the CSS block can each be reverted independently if needed.
 
 ---
 
@@ -104,7 +103,7 @@
 1. **Join flow:** if session ID parsed from `/join/{id}` URL → hide the Session ID field (show it only in fallback manual mode). Auto-uppercase the 6-char code input, `autocomplete="off"`, numeric-friendly layout.
 2. **V3 restyle:** port the amber token block from `apps/web/src/styles/global.css` `:root` into `index.css`; join card gets the vault card look; replace all emoji glyphs with inline SVG icons (copy needed icons from `apps/web/src/components/Icons.jsx` — party-guest has no shared import path).
 3. Delete `App.css` template scaffolding (`.hero`, `#next-steps`, `.ticks`, …) — verify nothing references it, then remove the import.
-4. **Iframe hardening:** add the same `sandbox` (per Phase 0 verdict) + full `allow` list + `allowFullScreen` to the party iframe.
+4. ✅ **DONE (2026-07-07, done early alongside Phase 1):** Iframe hardening — party-guest can't import `apps/web`'s `sourceSandbox()`, so it got its own small `getIframeSandbox(url)` helper keyed on `url.includes("videasy.net")` (same null-for-Videasy verdict from Phase 0), plus the full `allow="fullscreen; autoplay; encrypted-media; picture-in-picture"` list (was previously just `"autoplay; encrypted-media"`, no fullscreen permission at all) + `allowFullScreen`.
 5. **Sync throttle:** in `syncPlayback`, only rebuild the iframe URL when `|hostTime − lastSyncedTime| > 10 s` (explicit seek), never on heartbeat; document the constant.
 6. **Mobile layout:** stacked player/chat with `env(safe-area-inset-bottom)`; reaction buttons ≥44 px; test the autoplay overlay flow on iOS Safari.
 
