@@ -1,24 +1,44 @@
 # EXEC — Native Ad-Free Player (Direct Stream Extraction)
 
 > **Companion plan:** `refdocs/plans/PLAN_NATIVE_PLAYER.md`
-> **Status at authoring (2026-07-08):** Not started. Interim mitigation (Pop-up Shield source preference) shipped separately. Do Phase 0 before committing to the rest — if extraction success rates are bad, the plan gets rescoped, not pushed through.
+> **Status (2026-07-08):** ⛔ **Phase 0 spike run — NO-GO on the public library path.** `@movie-web/providers@2.4.13` (the only publicly installable option) resolved **0 / 20** titles. Phases 1–4 are **not started and should not start** on this library. See the results and the branching decision below. Branch `native-player` holds this finding; not merging player/proxy code.
 
 ---
 
-## Phase 0 — Provider spike (gate for everything else)
+## Phase 0 — Provider spike (gate for everything else) ⛔ DONE — NO-GO
 
-**Files:** scratch only — nothing merged.
+**What was actually tested**
+- `@p-stream/providers` / `@plink/providers` / a pstream custom registry: **not published** — all 404 on npm. P-Stream close-sourced their scrapers (confirmed by the research and by the empty registry). The `movie-web-rip/pstream-providers` "rip" is a source repo, not a maintained npm package.
+- `@movie-web/providers@2.4.13` **is** on npm but **`latest` is frozen at 2025-04-27** (~15 months stale as of this spike) — it's the last public release before the fork went private. This was the realistic candidate, so the spike ran against it.
+- Harness: Node script, `targets.NATIVE` (direct HLS/MP4 only — what our own player needs), `runAll` across all 14 built-in sources + 43 embed resolvers, per-request 15 s + per-title 45 s timeouts. CORS is browser-only so Node measures the raw extraction ceiling, independent of the proxy question. (`scratchpad/provider-spike/spike.mjs`.)
+- **Harness gotcha fixed before trusting results:** `makeStandardFetcher(fetch)` throws `Expected signal to be an instance of AbortSignal` under Node/undici — the lib ships a foreign AbortController. Wrapped fetch to substitute a fresh Node-native AbortController per request. After the fix, requests genuinely went out (several titles ran the full source list to completion in 36–42 s), so the 0/20 is a real result, not the earlier harness bug.
 
-**Steps:**
-1. In a scratch Vite app (or a dev-only route), install `@p-stream/providers` (fall back to the `movie-web-rip/pstream-providers` rip if the npm package is gutted) and `cinepro-org/core`.
-2. Stand up a local copy of movie-web `simple-proxy` (`npx` it or run its Vercel dev target) for the fetches that need CORS bypass.
-3. Run extraction against ~20 titles: 10 popular movies, 5 recent movies, 5 TV episodes. Record per-provider: success rate, time-to-stream, HLS vs MP4, captions availability.
-4. Verify at least one extracted HLS stream actually plays in a bare hls.js `<video>` (not just that a URL comes back — dead links count as failures).
-5. Write the results table into this doc; pick the provider lib (plan §6.1) and proxy runtime (§6.2).
+**Results — 20 titles (15 movies, 5 TV S1E1), 2026-07-08**
 
-**Checkpoint:** a documented success-rate table and a go/no-go decision. Go = ≥70% of the popular-movie set plays. No-go = stop here, plan gets revisited.
+| Set | Resolved | Rate |
+|---|---|---|
+| Popular/recent movies | 0 / 15 | 0% |
+| TV episodes | 0 / 5 | 0% |
+| **Total** | **0 / 20** | **0%** |
+| HLS streams | 0 | — |
+| With captions | 0 | — |
 
-**Rollback:** n/a — nothing merged.
+Outcome per title was a mix of **"no stream"** (all 14 sources tried, none returned a playable link — e.g. Inception, Parasite, Moana 2, Breaking Bad, Game of Thrones) and **45 s title-timeout** (slow/dead hosts eating the budget). An events-level probe showed the underlying source failures: `8stream` → "No providers available", `whvxMirrors` → "Failed to search" (their API), most others → dead hosts / network timeouts. This is exactly the "public scrapers rot after abandonment" outcome the research warned about — the source/embed network this 2025 snapshot points at is largely gone in mid-2026.
+
+**Checkpoint:** ⛔ Gate was "≥70% of popular movies play." Actual **0%**. **NO-GO on `@movie-web/providers`.**
+
+**Rollback:** n/a — nothing merged; spike lives in `scratchpad/` only.
+
+### Decision & where this leaves the plan
+The *architecture* in `PLAN_NATIVE_PLAYER.md` (client-side extraction → own `<video>` player) is still the only real ad-free path and remains sound — **what failed is the specific open-source provider library**, not the idea. But no maintained, publicly-installable extractor exists right now: P-Stream (the leading successor) went closed-source precisely because public scrapers get patched, and the last open snapshot is dead.
+
+Realistic options, in rough order of effort/payoff:
+1. **Shelve the build; keep embeds + Pop-up Shield (current `main`).** Lowest effort, already shipped. The honest default given the spike.
+2. **Re-run the spike against `cinepro-org/core`** (a separate, still-maintained multi-site scraper — not yet tested because option-1 evidence was already decisive for the movie-web path). Worth a short follow-up spike before fully shelving — it's the one untested candidate that claims active maintenance.
+3. **Write & self-maintain 2–3 scrapers ourselves** against currently-live hosts. Highest ongoing cost (they break weekly); only sensible if this becomes a primary product goal.
+4. **Revisit if/when P-Stream or a successor re-opens** a maintained provider package.
+
+**Recommended next step:** a single follow-up spike on `cinepro-org/core` (option 2) reusing `spike.mjs`; if it also lands near 0%, shelve to option 1 and treat Pop-up Shield as the standing answer. Do **not** build Phases 1–4 until a spike clears the ≥70% gate.
 
 ---
 

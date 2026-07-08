@@ -1,6 +1,6 @@
 # PLAN — Native Ad-Free Player (Direct Stream Extraction)
 
-> Status: **Draft** — researched, not started
+> Status: **On hold — Phase 0 spike returned NO-GO (2026-07-08).** The architecture below is sound, but the only publicly-installable extractor (`@movie-web/providers@2.4.13`, a frozen April-2025 snapshot) resolved 0/20 titles — its scraper network is dead and P-Stream's successor is closed-source. See `EXEC_NATIVE_PLAYER.md` Phase 0 for the results and options. One untested candidate remains (`cinepro-org/core`) before this is fully shelved.
 > Target codebase: **Web app** (`apps/web/src/`) on `main`; Electron can adopt later (it has fewer constraints, not more)
 > Companion execution doc: `refdocs/execution/EXEC_NATIVE_PLAYER.md`
 

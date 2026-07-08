@@ -16,6 +16,12 @@
 
 ## [Unreleased]
 
+### 2026-07-08 — Native-player Phase 0 spike (branch `native-player`) — NO-GO on public provider libs
+- **Changed:** `refdocs/execution/EXEC_NATIVE_PLAYER.md` — Phase 0 filled in with the spike method, results table, and a NO-GO decision + options; `refdocs/plans/PLAN_NATIVE_PLAYER.md` status → on hold; both README index tables updated. No app code touched (spike lives in `scratchpad/provider-spike/`, unmerged). **This work is on the `native-player` branch, not `main`.**
+- **Decided:** Ran the provider-success-rate spike that gates the whole native-player plan. `@p-stream/providers` isn't published (P-Stream close-sourced their scrapers — npm 404 + dead custom registry). `@movie-web/providers@2.4.13` *is* installable but its `latest` is frozen at 2025-04-27; against 20 titles (15 movies + 5 TV) with `targets.NATIVE` it resolved **0/20** — a mix of "no stream" (full source list exhausted) and dead-host timeouts. A harness-level Node/undici `AbortSignal` incompat was found and fixed first (fresh Node AbortController per request), so the 0/20 is a real result, not a harness artifact. Conclusion: the architecture (client-side extraction → own `<video>`) is still the only real ad-free path, but no maintained public extractor currently exists, so the build stays gated. Interim answer remains embeds + Pop-up Shield on `main`.
+- **Deviations:** Spike scoped to the one publicly-installable library rather than the plan's optimistic `@p-stream/providers` (which turned out not to exist publicly). `cinepro-org/core` (claims active maintenance) is the one untested candidate — flagged as a possible short follow-up spike before fully shelving.
+- **Known issues / next steps:** Do NOT build Phases 1–4 — no library clears the ≥70% gate. Optional: one more spike against `cinepro-org/core` reusing `spike.mjs`; if it also lands near 0%, shelve and treat Pop-up Shield as the standing answer. Revisit if P-Stream or a successor re-opens a maintained provider package.
+
 ### 2026-07-08 — Pop-up Shield (source-preference ad mitigation) + native-player plan
 - **Changed:**
   - `apps/web/src/utils/api.js` — added `sourceIsProtected(sourceId)` (`sourceSandbox(id) !== null`); tagged Videasy `note: "pop-up ads"` so the source picker shows the trade-off.
