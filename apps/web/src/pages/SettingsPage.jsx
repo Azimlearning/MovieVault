@@ -1597,6 +1597,13 @@ function VideoSourcesSection() {
   const [timeout, setTimeoutVal] = useState(() => sourceQueue.getSourceTimeout());
   const [reports, setReports] = useState(() => storage.get("brokenSourceReports") || []);
   const [saved, setSaved] = useState(false);
+  const [popupShield, setPopupShield] = useState(() => sourceQueue.getPopupShield());
+
+  const handleToggleShield = () => {
+    const next = !popupShield;
+    setPopupShield(next);
+    sourceQueue.savePopupShield(next);
+  };
 
   const handleMoveUp = (index) => {
     if (index === 0) return;
@@ -1640,7 +1647,30 @@ function VideoSourcesSection() {
       <div style={{ fontSize: 13, color: "var(--text3)", marginBottom: 16, lineHeight: 1.6 }}>
         Configure the priority order of video streaming sources and failover timeout. When playing a title, we'll try each source in order until one succeeds.
       </div>
-      
+
+      {/* Pop-up Shield toggle */}
+      <div style={{ marginBottom: 20, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "14px 16px", maxWidth: 400 }}>
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={popupShield}
+            onChange={handleToggleShield}
+            style={{ marginTop: 3, accentColor: "var(--accent)", width: 16, height: 16, flexShrink: 0 }}
+          />
+          <span>
+            <span style={{ display: "block", fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 4 }}>
+              Pop-up Shield
+            </span>
+            <span style={{ display: "block", fontSize: 12, color: "var(--text3)", lineHeight: 1.5 }}>
+              Prefer sources that allow the browser's pop-up blocking (VidSrc, 2Embed).
+              Videasy refuses pop-up blocking and opens ad tabs when you click play/pause —
+              with the shield on it's only used as the last fallback. Protected sources may
+              have a smaller catalog; you can always switch source manually in the player.
+            </span>
+          </span>
+        </label>
+      </div>
+
       {/* Priority order list */}
       <div style={{ marginBottom: 20 }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text2)", marginBottom: 8 }}>

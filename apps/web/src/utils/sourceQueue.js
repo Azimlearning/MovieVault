@@ -1,4 +1,5 @@
 import { storage } from "./storage";
+import { sourceIsProtected } from "./api";
 
 const CACHE_PREFIX = "lastGoodSource_";
 
@@ -11,6 +12,21 @@ export const sourceQueue = {
     }
     // Default priority order: videasy first
     return ["videasy", "vidsrc", "2embed"];
+  },
+
+  // Pop-up Shield: when on, sandbox-protected sources are tried before
+  // unprotected ones (Videasy), trading Videasy's catalog/quality for
+  // browser-enforced popup blocking. Off by default — Videasy is the most
+  // reliable source and some users prefer that over ad-free.
+  getPopupShield() {
+    return storage.get("popupShield") === true;
+  },
+
+  savePopupShield(enabled) {
+    storage.set("popupShield", enabled === true);
+    window.dispatchEvent(
+      new CustomEvent("movievault:popup-shield-changed", { detail: enabled }),
+    );
   },
   
   savePriorityOrder(order) {
@@ -50,10 +66,17 @@ export const sourceQueue = {
 
   /**
    * Generates a queue of source IDs.
-   * Places videasy at the front always, followed by the remaining priority sources.
+   * Default: videasy at the front, followed by the remaining priority sources.
+   * With Pop-up Shield on: stable-partitioned so sandbox-protected sources
+   * come first (in priority order) and unprotected ones (videasy) go last.
    */
   getQueue(tmdbId, season, episode) {
     const order = [...this.getPriorityOrder()];
+    if (this.getPopupShield()) {
+      const protectedSrcs = order.filter((s) => sourceIsProtected(s));
+      const unprotectedSrcs = order.filter((s) => !sourceIsProtected(s));
+      return [...protectedSrcs, ...unprotectedSrcs];
+    }
     const filtered = order.filter((s) => s !== "videasy");
     return ["videasy", ...filtered];
   },

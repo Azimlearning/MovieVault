@@ -20,4 +20,5 @@
 | [IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md) | V1 Electron app improvements roadmap | Draft |
 | [IMPROVEMENT_PLAN_V2.md](IMPROVEMENT_PLAN_V2.md) | V2 PRD — UX polish, One Pace, Watch Party | Shipped |
 | [PLAN_UI_REDESIGN_V3.md](PLAN_UI_REDESIGN_V3.md) | V3 — full visual redesign (new palette, Bento cards, new app icon) | Draft |
-| [PLAN_WEB_V3_POLISH.md](PLAN_WEB_V3_POLISH.md) | Web app mobile fixes + One Pace & Watch Party V3 redesign/testing | Draft |
+| [PLAN_WEB_V3_POLISH.md](PLAN_WEB_V3_POLISH.md) | Web app mobile fixes + One Pace & Watch Party V3 redesign/testing | Phases 0–5 done |
+| [PLAN_NATIVE_PLAYER.md](PLAN_NATIVE_PLAYER.md) | Ad-free native player via client-side stream extraction (P-Stream-style) | Draft — gated on Phase 0 spike |

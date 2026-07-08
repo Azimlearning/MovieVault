@@ -188,7 +188,7 @@ export const PLAYER_SOURCES = [
     id: "videasy",
     label: "Videasy",
     tag: null,
-    note: null,
+    note: "pop-up ads",
     supportsProgress: true,
     sandbox: null, // confirmed: renders "Iframe Sandbox Detected" error page when sandboxed
     movieUrl: (id) => `https://player.videasy.net/movie/${id}`,
@@ -249,6 +249,12 @@ export const sourceSandbox = (sourceId) => {
   if (!src) return DEFAULT_SANDBOX;
   return src.sandbox === undefined ? DEFAULT_SANDBOX : src.sandbox;
 };
+
+// "Protected" = the source runs inside a sandboxed iframe, so window.open()
+// popups and parent-tab hijacking are blocked by the browser. Unprotected
+// sources (sandbox: null) can open ad tabs on any click and nothing the
+// parent page does can stop that (ADR-013).
+export const sourceIsProtected = (sourceId) => sourceSandbox(sourceId) !== null;
 
 export const sourceProgressViaFrames = (sourceId) =>
   PLAYER_SOURCES.find((s) => s.id === sourceId)?.progressViaFrames ?? false;
