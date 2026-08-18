@@ -36,6 +36,11 @@ const STATIC_PAGES = Object.fromEntries(
 export function stateToPath(page, selected) {
   if (STATIC_ROUTES[page]) return STATIC_ROUTES[page];
 
+  if (page === "search") {
+    const q = (selected?.q || "").trim();
+    return q ? `/search?q=${encodeURIComponent(q)}` : "/search";
+  }
+
   const id = selected?.id;
   const title = selected?.title || selected?.name;
 
@@ -76,6 +81,10 @@ export function pathToState(pathname, search = "") {
 
   const segments = path.split("/").filter(Boolean);
   const params = new URLSearchParams(search);
+
+  if (path === "/search") {
+    return { page: "search", selected: { q: params.get("q") || "" } };
+  }
 
   if ((segments[0] === "movie" || segments[0] === "tv") && segments[1]) {
     const id = Number(segments[1]);

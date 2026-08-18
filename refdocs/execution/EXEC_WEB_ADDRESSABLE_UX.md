@@ -1,7 +1,7 @@
 # EXEC — Addressable URLs, Player Chrome, and Playback Recovery (Web)
 
 > Companion plan: [PLAN_WEB_ADDRESSABLE_UX.md](../plans/PLAN_WEB_ADDRESSABLE_UX.md)
-> Status: Phases 1–3 complete 2026-08-18.
+> Status: Phases 1–4 complete 2026-08-18.
 
 ## Phase 1 — Addresses, chrome, recovery
 
@@ -137,3 +137,81 @@
   probe effect in each page — each is self-contained.
 - CTAs/post-play: revert `playLabel`, `resumeTarget`, the `postPlay` state, and
   the `HeroBanner` progress props.
+
+## Phase 4 — Home rendering defects, search as a destination, nav diet
+
+Driven by an external UX review of the deployed app. Every claim was checked
+against the source before changing anything; one was under-diagnosed and one was
+already built.
+
+### 4a. Top Rated tiles (three defects, one cause)
+
+`HeroQuickPicks` renders `.hero-quickpick-info/-title/-meta/-overlay`. **None of
+those classes existed in the stylesheet** — only an older `.hero-quickpick-label`
+did. So the text sat in normal flow at the top of the tile and the tile's
+`::after` gradient painted straight over it. That single omission produced all
+three reported symptoms: a card with "no title", titles running past the tile
+edge, and `★9.22026` (no gap between the rating and the year). Added the missing
+rules: absolute bottom-anchored info block, two-line clamp, a `·` separator via
+`gap` plus a generated middot, and a single scrim instead of two stacked ones.
+
+### 4b. The hero never goes black
+
+The backdrop faded to `opacity: 0` the moment a trailer was *requested*, so a
+slow or blocked YouTube embed left the largest element on the home screen empty.
+The still frame now holds until the trailer iframe reports `load`. The backdrop
+also dropped from `original` (multi-megabyte) to `w1280`.
+
+### 4c. Home information architecture
+
+- The genre wall moved **below** the content rows: browsing by genre is a
+  low-frequency action and it was pushing Continue Watching and Recommended off
+  the first screen.
+- Genres are now a curated set of 17 (`CANONICAL_GENRES`). Merging TMDB's movie
+  and TV lists by raw name had produced both "Action" and "Action & Adventure",
+  both "Science Fiction" and "Sci-Fi & Fantasy", plus API artefacts nobody
+  browses by — Soap, Talk, News, TV Movie.
+- **Continue Watching already existed** and is already first in the default row
+  order; the review's screenshot simply had no in-progress titles. Not rebuilt.
+- Pinned is now a Home rail, ordered and hideable with every other row.
+- Hero hierarchy cut from six levels to five: the quoted tagline and the synopsis
+  were doing the same job. Synopsis contrast raised off `--text3` onto a
+  shadowed near-white, which it needed over photographic backdrops.
+
+### 4d. Search is a destination, not a modal
+
+`SearchModal` is deleted. `pages/SearchPage.jsx` is a full-canvas route at
+`/search?q=`, so a search can be reloaded, shared and returned to (the query is
+synced with `replaceState`, keeping keystrokes out of the Back stack).
+
+- Empty state is a browse surface: recent searches as **removable chips**, then
+  a real poster grid of top searches — the same `MediaCard` as everywhere else.
+- Results are a poster grid with section headers, a **People** row of circular
+  avatars (previously people were filtered out entirely), and related-genre chips
+  that turn a dead-end query into a browse path.
+- Scope toggle **All / My Library** replaces the second search box that used to
+  live on the Library page. One search, two scopes.
+- Recent searches now drop any stored term the new one starts with, so the
+  keystrokes on the way to a word ("wan", "darede", "daredevi") stop accumulating.
+
+### 4e. Sidebar diet
+
+Down from 211 lines to ~95: the pinned thumbnail list, its drag-to-reorder
+handlers and its context menu are gone. Seven nav items, no content. `⌘F` is
+retired; `⌘K` is the single global search key and is labelled in the sidebar and
+the shortcuts modal.
+
+### Verification (Phase 4)
+
+- `npm run build` passes; 5/5 Playwright smoke tests, two rewritten and one new
+  (sidebar carries no pinned list).
+- Local Chromium: `/search?q=matrix` cold-loads with the query in the input,
+  sidebar shows exactly Home/Search/Library/Downloads/One Pace + Help/Settings.
+- ESLint: no new errors. Removing the pinned list also cleared two dead props.
+
+### Not done, and why
+
+- **Full-width hero / two-column split.** The review called the right column
+  dead space. The quick-picks column is a deliberate part of the app's visual
+  identity and stretches with the hero; rebuilding it is a redesign, not a fix,
+  and belongs in a plan of its own.

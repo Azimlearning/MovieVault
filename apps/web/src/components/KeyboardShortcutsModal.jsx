@@ -4,7 +4,7 @@ export default function KeyboardShortcutsModal({ onClose }) {
   const [tab, setTab] = useState("global");
 
   const globalShortcuts = [
-    { keys: ["Ctrl", "F"], desc: "Open global search" },
+    { keys: ["Ctrl", "K"], desc: "Open global search" },
     { keys: ["Ctrl", "K"], desc: "Open global search" },
     { keys: ["Ctrl", ","], desc: "Open settings" },
     { keys: ["Ctrl", "L"], desc: "Jump to Library" },

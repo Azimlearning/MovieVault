@@ -9,21 +9,33 @@ test.beforeEach(async ({ page }) => {
   await page.goto(baseUrl, { waitUntil: "networkidle" });
 });
 
-test("first-run flow, home shell, and search modal are usable", async ({ page }) => {
+test("first-run flow, home shell, and search page are usable", async ({ page }) => {
   await expect(page.getByText("Skip for now")).toBeVisible();
   await expect(page.locator('img[alt="MovieVault"]')).toHaveAttribute("src", "/movievault-mark.svg");
 
   await page.getByText("Skip for now").click();
   await expect(page.getByRole("button", { name: "Search" })).toBeVisible();
 
+  // Search is a destination with its own address, not a modal over the app.
   await page.getByRole("button", { name: "Search" }).click();
-  const input = page.getByPlaceholder("Search movies and series...");
+  await expect(page).toHaveURL(/\/search$/);
+  const input = page.getByPlaceholder("Search movies, series, and people");
   await expect(input).toBeFocused();
-  await input.fill("movievault unlikely title");
-  await expect(input).toHaveValue("movievault unlikely title");
-  await page.keyboard.press("Escape");
-  await expect(input).toBeHidden();
 
+  await input.fill("movievault unlikely title");
+  await expect(page).toHaveURL(/\/search\?q=movievault%20unlikely%20title$/);
+
+  await page.keyboard.press("Escape");
+  await expect(input).toHaveValue("");
+
+  expect(pageErrors).toEqual([]);
+});
+
+test("the sidebar carries navigation only, with no pinned content list", async ({ page }) => {
+  await page.getByText("Skip for now").click();
+  const sidebar = page.locator(".sidebar");
+  await expect(sidebar.getByText("Pinned")).toHaveCount(0);
+  await expect(sidebar.locator("img").first()).toHaveAttribute("src", "/movievault-mark.svg");
   expect(pageErrors).toEqual([]);
 });
 

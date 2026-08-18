@@ -70,6 +70,7 @@ export default function HeroBanner({
   const [detail, setDetail] = useState(null);
 
   const [trailerActive, setTrailerActive] = useState(false);
+  const [trailerLoaded, setTrailerLoaded] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const iframeRef = useRef(null);
 
@@ -131,6 +132,7 @@ export default function HeroBanner({
 
   useEffect(() => {
     setTrailerActive(false);
+    setTrailerLoaded(false);
     setIsMuted(true);
     setDetail(null);
   }, [activeIdx]);
@@ -197,6 +199,7 @@ export default function HeroBanner({
 
     leaveTimerRef.current = setTimeout(() => {
       setTrailerActive(false);
+      setTrailerLoaded(false);
       setIsMuted(true);
     }, LEAVE_DELAY_MS);
   }, []);
@@ -238,7 +241,7 @@ export default function HeroBanner({
   const year = (hero.release_date || hero.first_air_date || "").slice(0, 4);
   const rating = hero.vote_average?.toFixed(1);
   const typeLabel = hero.media_type === "tv" ? "Trending · Series" : "Trending · Movie";
-  const backdropUrl = imgUrl(hero.backdrop_path, "original");
+  const backdropUrl = imgUrl(hero.backdrop_path, "w1280");
 
   return (
     <div
@@ -251,7 +254,8 @@ export default function HeroBanner({
         className="hero-banner-backdrop"
         style={{
           backgroundImage: backdropUrl ? `url(${backdropUrl})` : undefined,
-          opacity: trailerActive && !prefersReducedMotion ? 0 : 1,
+          opacity:
+            trailerActive && trailerLoaded && !prefersReducedMotion ? 0 : 1,
         }}
       />
 
@@ -264,6 +268,7 @@ export default function HeroBanner({
             allow="autoplay; encrypted-media"
             allowFullScreen
             title="Trailer"
+            onLoad={() => setTrailerLoaded(true)}
           />
         </div>
       )}
@@ -273,10 +278,6 @@ export default function HeroBanner({
       <div className="hero-banner-content">
         <div className="hero-banner-type">{typeLabel}</div>
         <div className="hero-banner-title">{title}</div>
-
-        {detail?.tagline && (
-          <div className="hero-banner-tagline">"{detail.tagline}"</div>
-        )}
 
         <div className="hero-banner-overview">
           {hero.overview}

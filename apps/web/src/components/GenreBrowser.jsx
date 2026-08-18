@@ -2,6 +2,30 @@ import { useState, useEffect, useCallback } from "react";
 import MediaCard from "./MediaCard";
 import { tmdbFetch } from "../utils/api";
 
+// name: what the user sees. movie/tv: the TMDB genre names to resolve ids from.
+// A TV umbrella genre deliberately backs two entries — a viewer looking for
+// Fantasy series and one looking for Sci-Fi series both land on the same TMDB
+// bucket, which is TMDB's modelling, not something to expose as two pills.
+const CANONICAL_GENRES = [
+  { name: "Action", movie: "Action", tv: "Action & Adventure" },
+  { name: "Adventure", movie: "Adventure", tv: "Action & Adventure" },
+  { name: "Comedy", movie: "Comedy", tv: "Comedy" },
+  { name: "Drama", movie: "Drama", tv: "Drama" },
+  { name: "Sci-Fi", movie: "Science Fiction", tv: "Sci-Fi & Fantasy" },
+  { name: "Fantasy", movie: "Fantasy", tv: "Sci-Fi & Fantasy" },
+  { name: "Thriller", movie: "Thriller", tv: null },
+  { name: "Horror", movie: "Horror", tv: null },
+  { name: "Crime", movie: "Crime", tv: "Crime" },
+  { name: "Mystery", movie: "Mystery", tv: "Mystery" },
+  { name: "Romance", movie: "Romance", tv: null },
+  { name: "Animation", movie: "Animation", tv: "Animation" },
+  { name: "Family", movie: "Family", tv: "Kids" },
+  { name: "Documentary", movie: "Documentary", tv: "Documentary" },
+  { name: "History", movie: "History", tv: null },
+  { name: "War", movie: "War", tv: "War & Politics" },
+  { name: "Western", movie: "Western", tv: "Western" },
+];
+
 export default function GenreBrowser({
   apiKey,
   onSelect,
@@ -24,14 +48,24 @@ export default function GenreBrowser({
     ])
       .then(([movieG, tvG]) => {
         if (!mounted) return;
-        const merged = new Map();
-        (movieG.genres || []).forEach((g) => {
-          merged.set(g.name, { ...(merged.get(g.name) || {}), name: g.name, idMovie: g.id });
-        });
-        (tvG.genres || []).forEach((g) => {
-          merged.set(g.name, { ...(merged.get(g.name) || { name: g.name }), idTv: g.id });
-        });
-        setGenres(Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name)));
+        const byName = new Map();
+        (movieG.genres || []).forEach((g) => byName.set(g.name, g.id));
+        const tvByName = new Map();
+        (tvG.genres || []).forEach((g) => tvByName.set(g.name, g.id));
+
+        // Merging the two TMDB lists by raw name produced both "Action" and
+        // "Action & Adventure", both "Science Fiction" and "Sci-Fi & Fantasy",
+        // plus API artefacts nobody browses by (Soap, Talk, News, TV Movie).
+        // This is the curated set, in the order people actually think in.
+        const built = CANONICAL_GENRES.map((genre) => {
+          const idMovie = genre.movie ? byName.get(genre.movie) : undefined;
+          const idTv = genre.tv ? tvByName.get(genre.tv) : undefined;
+          return idMovie || idTv
+            ? { name: genre.name, idMovie, idTv }
+            : null;
+        }).filter(Boolean);
+
+        setGenres(built);
       })
       .catch(() => {});
     return () => { mounted = false; };

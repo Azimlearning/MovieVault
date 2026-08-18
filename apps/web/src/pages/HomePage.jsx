@@ -45,6 +45,7 @@ export default function HomePage({
   onSelect,
   onSave,
   saved,
+  savedList = [],
   progress,
   inProgress,
   onRemoveFromContinue,
@@ -276,16 +277,6 @@ export default function HomePage({
           </div>
         )}
 
-        {/* ── Genre browser ── */}
-        <GenreBrowser
-          apiKey={apiKey}
-          onSelect={onSelect}
-          watched={watched}
-          onMarkWatched={onMarkWatched}
-          onMarkUnwatched={onMarkUnwatched}
-          ratingsMap={enrichedRatingsMap}
-        />
-
       {/* ── Rows in user-configured order ── */}
       {rowOrder.map((id) => {
         if (!rowVisible[id]) return null;
@@ -315,6 +306,37 @@ export default function HomePage({
                       ageRating={r.cert}
                       restricted={restr}
                       onRemove={onRemoveFromContinue}
+                      tasteRating={getTasteRating(item, tasteRatings)}
+                      onSetTasteRating={(rating) => updateTasteRating(item, rating)}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          );
+        }
+
+        if (id === "pinned") {
+          if (savedList.length === 0) return null;
+          return (
+            <div key="pinned" className="section">
+              <div className="section-title">Pinned</div>
+              <div className="cards-grid">
+                {savedList.map((item) => {
+                  const pk =
+                    item.media_type === "movie"
+                      ? `movie_${item.id}`
+                      : `tv_${item.id}`;
+                  return (
+                    <MediaCard
+                      key={`pinned_${item.media_type}_${item.id}`}
+                      item={item}
+                      onClick={() => onSelect(item)}
+                      progress={progress[pk] || 0}
+                      watched={watched}
+                      onMarkWatched={onMarkWatched}
+                      onMarkUnwatched={onMarkUnwatched}
+                      onRemove={() => onSave(item)}
                       tasteRating={getTasteRating(item, tasteRatings)}
                       onSetTasteRating={(rating) => updateTasteRating(item, rating)}
                     />
@@ -446,6 +468,16 @@ export default function HomePage({
 
         return null;
       })}
+
+        {/* ── Genre browser ── */}
+        <GenreBrowser
+          apiKey={apiKey}
+          onSelect={onSelect}
+          watched={watched}
+          onMarkWatched={onMarkWatched}
+          onMarkUnwatched={onMarkUnwatched}
+          ratingsMap={enrichedRatingsMap}
+        />
       </AsyncBoundary>
     </div>
   );

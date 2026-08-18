@@ -28,7 +28,6 @@ export default function LibraryPage({
   watchHistory = {}
 }) {
   const [activeTab, setActiveTab] = useState("all");
-  const [searchQuery, setSearchQuery] = useState("");
   const [selectedGenre, setSelectedGenre] = useState("");
   const [selectedRating, setSelectedRating] = useState("");
   const [sortOption, setSortOption] = useState("recently-watched");
@@ -115,15 +114,9 @@ export default function LibraryPage({
     });
   }, [allItems, activeTab]);
 
-  // Search, Genre, and Rating Filtering
+  // Genre and Rating filtering
   const filteredItems = useMemo(() => {
     return tabFilteredItems.filter(item => {
-      // Search text match
-      const title = (item.title || item.name || "").toLowerCase();
-      if (searchQuery && !title.includes(searchQuery.toLowerCase())) {
-        return false;
-      }
-
       // Genre match
       if (selectedGenre) {
         const itemGenres = (item.genres || item.genre_ids || []).map(g => {
@@ -141,7 +134,7 @@ export default function LibraryPage({
 
       return true;
     });
-  }, [tabFilteredItems, searchQuery, selectedGenre, selectedRating]);
+  }, [tabFilteredItems, selectedGenre, selectedRating]);
 
   // Sorting
   const sortedItems = useMemo(() => {
@@ -327,14 +320,6 @@ export default function LibraryPage({
 
       {activeTab !== "stats" && (
         <div className="library-filters-row">
-          <input
-            type="text"
-            className="library-filter-input"
-            placeholder="Search title... (Press /)"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-
           <select
             className="library-filter-select"
             value={selectedGenre}

@@ -1,6 +1,6 @@
 # PLAN — Addressable URLs, Player Chrome, and Playback Recovery (Web)
 
-> Status: Phase 1 implemented 2026-08-18.
+> Status: Phases 1–4 implemented 2026-08-18.
 > Target: `apps/web/`
 > Companion execution: [EXEC_WEB_ADDRESSABLE_UX.md](../execution/EXEC_WEB_ADDRESSABLE_UX.md)
 > Research: [STREAMING_UX_TEARDOWN.md](../research/STREAMING_UX_TEARDOWN.md)
@@ -26,12 +26,21 @@ recoverable state rather than a dead end (§6.9).
 - A recovery path when an embedded provider shows nothing, including an honest
   explanation of *why* — network-level block versus embed refusal.
 
+**In (Phase 4, from an external UX review of the deployed app)**
+- Home rendering defects: unstyled Top Rated tiles, the hero's black-box gap.
+- Home information architecture: genre wall below the rows and curated, Pinned
+  as a rail rather than a nav list.
+- Search as a full-canvas destination with its own address, a browse-surface
+  empty state, mixed-entity results, and a single global search key.
+
 **Out (this phase)**
 - Transport controls (play/pause/seek/subtitles) over third-party embeds — see
   Constraints; impossible from the parent page.
 - Replacing third-party providers with an owned backend — tracked in
   `PLAN_NATIVE_PLAYER.md`, currently NO-GO after the Phase 0 spike.
-- Profiles, Match %, post-play for movies, and the remaining teardown P2 set.
+- Profiles, Match %, and the remaining teardown P2 set.
+- A full-width hero / removal of the two-column home split: that is a redesign
+  of a deliberate visual identity, not a defect fix.
 
 ## Constraints
 
@@ -58,6 +67,16 @@ recoverable state rather than a dead end (§6.9).
   and dismiss, with a diagnosis that distinguishes a blocked network from an
   embed refusal.
 - `npm run build` passes and the Playwright smoke suite covers routing.
+
+## Acceptance criteria (Phase 4)
+
+- No element on Home renders text with no styling behind it, no concatenated
+  metadata, and no untruncated title.
+- The hero shows artwork from first paint through to the trailer, with no black
+  frame in between.
+- Genre pills contain no duplicate concepts and no API artefacts.
+- Search has an address, a browse-surface empty state, and one entry key.
+- The sidebar contains navigation only.
 
 ## Open questions
 

@@ -18,7 +18,7 @@ import { scrobbleTrakt, scrobbleAnilist } from "./utils/oauth";
 import { clearAppCaches } from "./utils/storage";
 
 import Sidebar from "./components/Sidebar";
-import SearchModal from "./components/SearchModal";
+
 import SetupScreen from "./components/SetupScreen";
 import CloseConfirmModal from "./components/CloseConfirmModal";
 import UpdateModal from "./components/UpdateModal";
@@ -30,6 +30,7 @@ const TVPage = lazy(() => import("./pages/TVPage"));
 const LibraryPage = lazy(() => import("./pages/LibraryPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const DownloadsPage = lazy(() => import("./pages/DownloadsPage"));
+const SearchPage = lazy(() => import("./pages/SearchPage"));
 const OnePacePage = lazy(() => import("./pages/OnePacePage"));
 const OnePaceArcPage = lazy(() => import("./pages/OnePaceArcPage"));
 const OnePacePlayer = lazy(() => import("./components/OnePacePlayer"));
@@ -111,7 +112,6 @@ export default function App() {
     () => INITIAL_ROUTE?.page || storage.get("startPage") || "home",
   );
   const [selected, setSelected] = useState(() => INITIAL_ROUTE?.selected ?? null);
-  const [showSearch, setShowSearch] = useState(false);
   const [dlSearchOpen, setDlSearchOpen] = useState(false);
   const [librarySort, setLibrarySort] = useState(
     () => storage.get(STORAGE_KEYS.LIBRARY_SORT) || "manual",
@@ -120,9 +120,7 @@ export default function App() {
   const [platform, setPlatform] = useState(null);
 
   // Browser history is the navigation stack: Back/Forward, deep links and
-  // shared URLs all travel the same path. `navDepth` exists only so the sidebar
-  // can tell whether this session has anywhere to go back to.
-  const [navDepth, setNavDepth] = useState(0);
+  // shared URLs all travel the same path, so the app keeps no stack of its own.
 
   const [saved, setSaved] = useState(() => storage.get("saved") || {});
   // Separate order array for drag-and-drop reordering
@@ -660,6 +658,7 @@ export default function App() {
       history: "Library",
       downloads: "Downloads",
       settings: "Settings",
+      search: "Search",
       onepace: "One Pace",
       onepaceArc: "One Pace",
       onepacePlayer: "One Pace",
@@ -679,7 +678,6 @@ export default function App() {
   const navigate = useCallback((pg, data = null) => {
     setSelected(data);
     setPage(pg);
-    setShowSearch(false);
 
     const path = stateToPath(pg, data);
     const nextIdx = (window.history.state?.mvIdx ?? 0) + 1;
@@ -689,8 +687,6 @@ export default function App() {
       "",
       path || window.location.pathname + window.location.search,
     );
-    setNavDepth(nextIdx);
-
     // After navigating away, the previous page's component unmounts
     if (typeof gc === "function") {
       requestIdleCallback(() => gc(), { timeout: 2000 });
@@ -719,7 +715,6 @@ export default function App() {
   useEffect(() => {
     const handlePopState = (event) => {
       const idx = event.state?.mvIdx ?? 0;
-      setNavDepth(idx);
       const restored =
         ROUTE_OBJECTS.get(idx) ||
         currentPathState() || {
@@ -728,7 +723,6 @@ export default function App() {
         };
       setPage(restored.page);
       setSelected(restored.selected);
-      setShowSearch(false);
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
@@ -740,14 +734,12 @@ export default function App() {
       const tag = (e.target?.tagName || "").toUpperCase();
       const isInput = tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable;
 
-      if ((e.metaKey || e.ctrlKey) && (e.key === "f" || e.key === "k" || e.key === "F" || e.key === "K")) {
-        if (e.key.toLowerCase() === "k" && pageRef.current === "downloads") {
-          e.preventDefault();
-          setDlSearchOpen(true);
-        } else {
-          e.preventDefault();
-          setShowSearch(true);
-        }
+      // One global search key. Search is a destination now, so this navigates
+      // rather than opening an overlay.
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        if (pageRef.current === "downloads") setDlSearchOpen(true);
+        else navigate("search", { q: "" });
       }
       if ((e.metaKey || e.ctrlKey) && e.key === ",") {
         e.preventDefault();
@@ -762,8 +754,6 @@ export default function App() {
         navigate("home");
       }
       if (e.key === "Escape") {
-        e.preventDefault();
-        setShowSearch(false);
         setShowShortcuts(false);
       }
       if (e.key === "?" && !e.ctrlKey && !e.metaKey) {
@@ -788,7 +778,7 @@ export default function App() {
 
   // ── Custom event bindings for webview keyboard shortcuts bypass ───────────
   useEffect(() => {
-    const handleOpenSearch = () => setShowSearch(true);
+    const handleOpenSearch = () => navigate("search", { q: "" });
     const handleOpenSettings = () => navigate("settings");
     const handleOpenLibrary = () => navigate("history");
     const handleOpenHome = () => navigate("home");
@@ -1062,11 +1052,6 @@ export default function App() {
     return list;
   }, [saved, savedOrder, librarySort]);
 
-  const handleReorderSaved = useCallback((newOrder) => {
-    setSavedOrder(newOrder);
-    storage.set("savedOrder", newOrder);
-  }, []);
-
   // Stable handler
   const handleGoToDownloads = useCallback(
     (id) => {
@@ -1089,12 +1074,8 @@ export default function App() {
         <Sidebar
           page={page}
           onNavigate={navigate}
-          onSearch={() => setShowSearch(true)}
-          savedList={savedList}
+          onSearch={() => navigate("search", { q: "" })}
           activeDownloads={activeDownloadCount}
-          onReorderSaved={handleReorderSaved}
-          onRemoveSaved={toggleSave}
-          canGoBack={navDepth > 0}
           onBack={navigateBack}
           onShowShortcuts={() => setShowShortcuts(true)}
         />
@@ -1157,6 +1138,7 @@ export default function App() {
                 onSelect={handleSelectResult}
                 onSave={toggleSave}
                 saved={saved}
+                savedList={savedList}
                 progress={progress}
                 inProgress={inProgress}
                 onRemoveFromContinue={removeFromContinueWatching}
@@ -1211,6 +1193,17 @@ export default function App() {
                 downloads={downloads}
                 onGoToDownloads={handleGoToDownloads}
                 onSelect={handleSelectResult}
+              />
+            )}
+            {page === "search" && (
+              <SearchPage
+                apiKey={apiKey}
+                onSelect={handleSelectResult}
+                offline={offline}
+                initialQuery={selected?.q || ""}
+                watched={watched}
+                onMarkWatched={markWatched}
+                onMarkUnwatched={markUnwatched}
               />
             )}
             {page === "history" && (
@@ -1285,14 +1278,6 @@ export default function App() {
           </Suspense>
         </div>
 
-        {showSearch && (
-          <SearchModal
-            apiKey={apiKey}
-            onSelect={handleSelectResult}
-            onClose={() => setShowSearch(false)}
-            offline={offline}
-          />
-        )}
         {updateBanner && (
           <div
             style={{
