@@ -1,5 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CloseIcon, ShieldBlockIcon } from "./Icons";
+import {
+  BLOCKER,
+  blockerAdvice,
+  detectContentBlocker,
+} from "../utils/adBlockDetect";
 
 /**
  * The browser build's answer to "why do I still get ads when I click the
@@ -18,6 +23,21 @@ export default function PopupShieldModal({
   onToggleShield,
   onClose,
 }) {
+  // Detection runs when the panel opens, never on page load: it costs one
+  // request and nobody should pay it for a screen they did not ask for.
+  const [blocker, setBlocker] = useState(BLOCKER.UNKNOWN);
+  const advice = useMemo(() => blockerAdvice(), []);
+
+  useEffect(() => {
+    let active = true;
+    detectContentBlocker().then((result) => {
+      if (active) setBlocker(result);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   useEffect(() => {
     const handler = (e) => {
       if (e.key === "Escape") onClose();
@@ -83,14 +103,64 @@ export default function PopupShieldModal({
             </span>
           </label>
 
+          <div className="shield-blocker">
+            <div className="shield-blocker__head">
+              <span
+                className={`shield-dot${blocker === BLOCKER.ACTIVE ? " shield-dot--on" : blocker === BLOCKER.ABSENT ? " shield-dot--off" : ""}`}
+              />
+              <strong>
+                {blocker === BLOCKER.ACTIVE
+                  ? "Content blocker detected"
+                  : blocker === BLOCKER.ABSENT
+                    ? "No content blocker detected"
+                    : "Checking for a content blocker…"}
+              </strong>
+            </div>
+
+            {blocker === BLOCKER.ACTIVE && (
+              <p className="shield-modal__text">
+                Requests are being blocked before they leave your browser, which
+                is the strongest protection available here. Anything still
+                getting through was opened by your own click inside the
+                provider&apos;s frame — only the sandbox above stops those.
+              </p>
+            )}
+
+            {blocker === BLOCKER.ABSENT && (
+              <>
+                <p className="shield-modal__text">
+                  A blocker works at the network layer, which is the one place
+                  these ads can be stopped without breaking playback. MovieVault
+                  cannot do this for you: a web page has no say over requests
+                  another site&apos;s frame makes.
+                  {advice.note ? ` ${advice.note}` : ""}
+                </p>
+                <div className="shield-blocker__links">
+                  {advice.links.map((link) => (
+                    <a
+                      key={link.url}
+                      className="shield-blocker__link"
+                      href={link.url}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                    >
+                      {link.label}
+                    </a>
+                  ))}
+                </div>
+                <p className="shield-modal__fineprint">
+                  Avoid DNS-level blockers for this: they can also blackhole the
+                  streaming providers themselves, which shows up as
+                  &ldquo;can&apos;t be reached&rdquo; on a black player.
+                </p>
+              </>
+            )}
+          </div>
+
           <ul className="shield-modal__list">
             <li>
               MovieVault&apos;s own buttons — the clusters in the top corners —
               are outside the provider&apos;s frame and never open ads.
-            </li>
-            <li>
-              A content blocker in your browser stops these at the network
-              layer, which a web page cannot do for itself.
             </li>
             <li>
               The desktop app blocks ad and tracker requests directly and

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import UpdateModal from "../components/UpdateModal";
 import {
   storage,
@@ -8,6 +8,11 @@ import {
   clearAppCaches,
 } from "../utils/storage";
 import { clearTmdbCache } from "../utils/api";
+import {
+  BLOCKER,
+  blockerAdvice,
+  detectContentBlocker,
+} from "../utils/adBlockDetect";
 import { ACCENT_PRESETS, applyAccentColor } from "../utils/appearance";
 import { SUBTITLE_LANGUAGES } from "../utils/subtitles";
 import { DEFAULT_INVIDIOUS_BASE } from "../components/TrailerModal";
@@ -1598,6 +1603,19 @@ function VideoSourcesSection() {
   const [reports, setReports] = useState(() => storage.get("brokenSourceReports") || []);
   const [saved, setSaved] = useState(false);
   const [popupShield, setPopupShield] = useState(() => sourceQueue.getPopupShield());
+  // A blocker is the only thing that stops the ads a click inside the provider's
+  // frame opens, so its status belongs next to the shield rather than buried.
+  const [blocker, setBlocker] = useState(BLOCKER.UNKNOWN);
+  const blockerHelp = useMemo(() => blockerAdvice(), []);
+  useEffect(() => {
+    let active = true;
+    detectContentBlocker().then((result) => {
+      if (active) setBlocker(result);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleToggleShield = () => {
     const next = !popupShield;
@@ -1669,6 +1687,56 @@ function VideoSourcesSection() {
             </span>
           </span>
         </label>
+      </div>
+
+      {/* Content blocker status — the network-layer half of the answer */}
+      <div className="shield-blocker" style={{ maxWidth: 400, marginBottom: 20 }}>
+        <div className="shield-blocker__head">
+          <span
+            className={`shield-dot${blocker === BLOCKER.ACTIVE ? " shield-dot--on" : blocker === BLOCKER.ABSENT ? " shield-dot--off" : ""}`}
+          />
+          <strong>
+            {blocker === BLOCKER.ACTIVE
+              ? "Content blocker detected"
+              : blocker === BLOCKER.ABSENT
+                ? "No content blocker detected"
+                : "Checking for a content blocker…"}
+          </strong>
+        </div>
+        {blocker === BLOCKER.ABSENT && (
+          <>
+            <p className="shield-modal__text">
+              The Pop-up Shield can only stop windows a source opens. Everything
+              else — banners, trackers, redirects inside the player — has to be
+              blocked before it leaves your browser, which a web page cannot do
+              for itself.{blockerHelp.note ? ` ${blockerHelp.note}` : ""}
+            </p>
+            <div className="shield-blocker__links">
+              {blockerHelp.links.map((link) => (
+                <a
+                  key={link.url}
+                  className="shield-blocker__link"
+                  href={link.url}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  {link.label}
+                </a>
+              ))}
+            </div>
+            <p className="shield-modal__fineprint">
+              Avoid DNS-level blockers for this: they can blackhole the
+              streaming providers too, which looks like a dead player.
+            </p>
+          </>
+        )}
+        {blocker === BLOCKER.ACTIVE && (
+          <p className="shield-modal__text">
+            Ad and tracker requests are being blocked before they leave your
+            browser. Pop-ups opened by your own click inside a provider's frame
+            still need the shield above.
+          </p>
+        )}
       </div>
 
       {/* Priority order list */}
