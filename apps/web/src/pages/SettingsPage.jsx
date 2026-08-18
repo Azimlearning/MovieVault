@@ -1,9 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import UpdateModal from "../components/UpdateModal";
 import {
   storage,
   STORAGE_KEYS,
-  secureStorage,
   isElectron,
   clearAppCaches,
 } from "../utils/storage";
@@ -14,11 +12,9 @@ import {
   detectContentBlocker,
 } from "../utils/adBlockDetect";
 import { ACCENT_PRESETS, applyAccentColor } from "../utils/appearance";
-import { SUBTITLE_LANGUAGES } from "../utils/subtitles";
 import { DEFAULT_INVIDIOUS_BASE } from "../components/TrailerModal";
 import { RATING_COUNTRIES } from "../utils/ageRating";
 import { WarningIcon } from "../components/Icons";
-import { checkForUpdates } from "../utils/updates";
 import {
   HOME_ROWS,
   loadHomeLayout,
@@ -28,12 +24,6 @@ import {
 import { collectBackupData, restoreBackupData } from "../utils/backup";
 import { formatBytes } from "../utils/storage";
 import { sourceQueue } from "../utils/sourceQueue";
-import {
-  exchangeTraktCode,
-  exchangeAnilistCode,
-  getTraktConfig,
-  getAnilistConfig
-} from "../utils/oauth";
 
 // ── Custom Select ─────────────────────────────────────────────────────────────
 function SettingsSelect({ value, onChange, options, style }) {
@@ -532,167 +522,6 @@ function CleanRow({
   );
 }
 
-// ── Version & Update Section ──────────────────────────────────────────────────
-function VersionSection() {
-  const [checking, setChecking] = useState(false);
-  const [result, setResult] = useState(null); // { latest, current, url, hasUpdate } | { error }
-  const [showUpdateModal, setShowUpdateModal] = useState(false);
-  const [autoCheck, setAutoCheck] = useState(() => {
-    const stored = storage.get(STORAGE_KEYS.AUTO_CHECK_UPDATES);
-    return stored === null || stored === undefined ? true : !!stored;
-  });
-  const [autoSaved, setAutoSaved] = useState(false);
-  const [currentVersion, setCurrentVersion] = useState("0.0.0");
-
-  useEffect(() => {
-    if (window.electron?.getAppVersion) {
-      window.electron.getAppVersion().then((v) => {
-        setCurrentVersion(v);
-      });
-    }
-  }, []);
-
-  const runCheck = async () => {
-    setChecking(true);
-    setResult(null);
-    try {
-      const r = await checkForUpdates();
-      setResult(r);
-    } catch (e) {
-      setResult({ error: e.message || "Could not reach GitHub." });
-    } finally {
-      setChecking(false);
-    }
-  };
-
-  const toggleAuto = (val) => {
-    setAutoCheck(val);
-    storage.set(STORAGE_KEYS.AUTO_CHECK_UPDATES, val ? 1 : 0);
-    setAutoSaved(true);
-    setTimeout(() => setAutoSaved(false), 1800);
-  };
-
-  return (
-    <div style={{ marginBottom: 40 }}>
-      <div className="settings-section-title">App Version</div>
-
-      {/* Version row */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 16,
-          flexWrap: "wrap",
-          marginBottom: 20,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 13, color: "var(--text3)" }}>
-            Current version
-          </span>
-          <code
-            style={{
-              fontSize: 14,
-              fontWeight: 700,
-              color: "var(--text)",
-              background: "var(--surface2)",
-              border: "1px solid var(--border)",
-              borderRadius: 6,
-              padding: "4px 12px",
-            }}
-          >
-            v{currentVersion}
-          </code>
-        </div>
-
-        <button
-          className="btn btn-ghost"
-          disabled={checking}
-          onClick={runCheck}
-          style={{ opacity: checking ? 0.6 : 1 }}
-        >
-          {checking ? "Checking…" : "Check for Updates"}
-        </button>
-
-        {result && !result.error && result.hasUpdate && (
-          <button
-            onClick={() => setShowUpdateModal(true)}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              background: "rgba(229,9,20,0.12)",
-              border: "1px solid rgba(229,9,20,0.4)",
-              color: "var(--red)",
-              borderRadius: 8,
-              padding: "6px 14px",
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: "pointer",
-              transition: "background 0.2s",
-            }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.background = "rgba(229,9,20,0.22)")
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.background = "rgba(229,9,20,0.12)")
-            }
-          >
-            🎉 v{result.latest} available. Install Update
-          </button>
-        )}
-
-        {result && !result.error && !result.hasUpdate && (
-          <span style={{ fontSize: 13, color: "#48c774", fontWeight: 500 }}>
-            ✓ You're up to date
-          </span>
-        )}
-
-        {result?.error && (
-          <span style={{ fontSize: 13, color: "var(--red)" }}>
-            ✕ {result.error}
-          </span>
-        )}
-      </div>
-
-      {showUpdateModal && result?.hasUpdate && (
-        <UpdateModal
-          updateInfo={result}
-          onClose={() => setShowUpdateModal(false)}
-        />
-      )}
-
-      {/* Auto-check toggle */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
-        <Toggle
-          value={autoCheck}
-          onChange={toggleAuto}
-          title={autoCheck ? "Disable auto-check" : "Enable auto-check"}
-        />
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text)" }}>
-            Check for updates on startup
-          </div>
-          <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
-            Shows a notification banner if a new version is available. Turned on
-            by default.
-          </div>
-        </div>
-        {autoSaved && (
-          <span style={{ fontSize: 12, color: "#48c774" }}>✓ Saved</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ── Home Layout Section ───────────────────────────────────────────────────────
 function HomeLayoutSection() {
   const [order, setOrder] = useState(() => {
@@ -893,197 +722,6 @@ function HomeLayoutSection() {
 }
 
 // ── Scheduled Backup Section ──────────────────────────────────────────────────
-const FREQUENCY_OPTIONS = [
-  { value: "startup", label: "On App Start" },
-  { value: "daily", label: "Daily" },
-  { value: "weekly", label: "Weekly" },
-  { value: "monthly", label: "Monthly" },
-];
-
-function ScheduledBackupSection() {
-  const [enabled, setEnabled] = useState(false);
-  const [backupPath, setBackupPath] = useState("");
-  const [keepCount, setKeepCount] = useState(5);
-  const [frequency, setFrequency] = useState("startup");
-  const [saved, setSaved] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!isElectron) {
-      setLoading(false);
-      return;
-    }
-    window.electron.getScheduledBackupSettings().then((s) => {
-      if (s) {
-        setEnabled(!!s.enabled);
-        setBackupPath(s.path || "");
-        setKeepCount(s.keepCount ?? 5);
-        setFrequency(s.frequency || "startup");
-      }
-      setLoading(false);
-    });
-  }, []);
-
-  const pickFolder = async () => {
-    if (!isElectron) return;
-    const folder = await window.electron.pickFolder();
-    if (folder) setBackupPath(folder);
-  };
-
-  const handleSave = async () => {
-    if (!isElectron) return;
-    const settings = {
-      enabled,
-      path: backupPath,
-      keepCount: Math.max(1, Math.min(99, Number(keepCount) || 5)),
-      frequency,
-      lastRun: null,
-    };
-    // preserve lastRun from existing settings
-    const existing = await window.electron.getScheduledBackupSettings();
-    if (existing?.lastRun) settings.lastRun = existing.lastRun;
-    await window.electron.setScheduledBackupSettings(settings);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-
-  if (!isElectron || loading) return null;
-
-  return (
-    <div
-      style={{
-        marginTop: 28,
-        padding: "20px 22px",
-        background: "var(--surface2)",
-        border: "1px solid var(--border)",
-        borderRadius: 10,
-      }}
-    >
-      {/* Header row with toggle */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          marginBottom: enabled ? 20 : 0,
-        }}
-      >
-        <Toggle value={enabled} onChange={setEnabled} />
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>
-            Scheduled Backups
-          </div>
-          <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
-            Automatically save a backup file on a schedule
-          </div>
-        </div>
-      </div>
-
-      {enabled && (
-        <>
-          {/* Backup path */}
-          <div style={{ marginBottom: 14 }}>
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 600,
-                color: "var(--text2)",
-                marginBottom: 6,
-              }}
-            >
-              Backup Folder
-            </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input
-                className="apikey-input"
-                style={{ flex: 1, marginBottom: 0 }}
-                placeholder="/home/you/Backups"
-                value={backupPath}
-                onChange={(e) => setBackupPath(e.target.value)}
-              />
-              <button
-                className="btn btn-ghost"
-                style={{ padding: "7px 14px", fontSize: 13 }}
-                onClick={pickFolder}
-              >
-                Browse…
-              </button>
-            </div>
-          </div>
-
-          {/* Frequency + Keep count row */}
-          <div
-            style={{
-              display: "flex",
-              gap: 16,
-              flexWrap: "wrap",
-              marginBottom: 16,
-            }}
-          >
-            <div style={{ flex: 1, minWidth: 160 }}>
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: "var(--text2)",
-                  marginBottom: 6,
-                }}
-              >
-                Frequency
-              </div>
-              <SettingsSelect
-                value={frequency}
-                onChange={(v) => setFrequency(v)}
-                options={FREQUENCY_OPTIONS}
-                style={{ width: "100%" }}
-              />
-            </div>
-
-            <div style={{ flex: 1, minWidth: 120 }}>
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: "var(--text2)",
-                  marginBottom: 6,
-                }}
-              >
-                Keep Last N Backups
-              </div>
-              <input
-                type="number"
-                min={1}
-                max={99}
-                className="apikey-input"
-                style={{ width: "100%", marginBottom: 0 }}
-                value={keepCount}
-                onChange={(e) => setKeepCount(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <button className="btn btn-primary" onClick={handleSave}>
-              Save
-            </button>
-            {saved && (
-              <span style={{ fontSize: 13, color: "#48c774" }}>✓ Saved</span>
-            )}
-          </div>
-        </>
-      )}
-
-      {!enabled && (
-        <div
-          style={{ display: "flex", justifyContent: "flex-end", marginTop: 0 }}
-        >
-          {/* empty, toggle handles everything */}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Backup & Restore ─────────────────────────────────────────────────────────
 function BackupRestoreSection({ onRestored }) {
   const [restoreStatus, setRestoreStatus] = useState(null);
@@ -1196,7 +834,6 @@ function BackupRestoreSection({ onRestored }) {
           </span>
         )}
       </div>
-      <ScheduledBackupSection />
     </div>
   );
 }
@@ -1837,485 +1474,6 @@ function VideoSourcesSection() {
   );
 }
 
-// ── Subtitle Settings ─────────────────────────────────────────────────────────
-function SubtitleSettingsSection() {
-  const [enabled, setEnabled] = useState(
-    () =>
-      storage.get(STORAGE_KEYS.SUBTITLE_ENABLED) !== 0 &&
-      storage.get(STORAGE_KEYS.SUBTITLE_ENABLED) !== "0",
-  );
-  const [lang, setLang] = useState(
-    () => storage.get(STORAGE_KEYS.SUBTITLE_LANG) || "en",
-  );
-  const [subdlApiKey, setSubdlApiKey] = useState("");
-  const [showSubdlKey, setShowSubdlKey] = useState(false);
-  const [wyzieApiKey, setWyzieApiKey] = useState("");
-  const [showWyzieKey, setShowWyzieKey] = useState(false);
-  const [wyzieCopied, setWyzieCopied] = useState(false);
-  const [wyzieRedeeming, setWyzieRedeeming] = useState(false);
-  const [wyzieError, setWyzieError] = useState("");
-  const [wyzieClearConfirm, setWyzieClearConfirm] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  // Load keys from secure storage
-  useEffect(() => {
-    secureStorage.get(STORAGE_KEYS.SUBDL_API_KEY).then((val) => {
-      if (val) setSubdlApiKey(val);
-    });
-    secureStorage.get(STORAGE_KEYS.WYZIE_API_KEY).then((val) => {
-      if (val) setWyzieApiKey(val);
-    });
-  }, []);
-
-  const hasSubdlKey = subdlApiKey.trim().length > 0;
-  const hasWyzieKey = wyzieApiKey.trim().length > 0;
-
-  const handleWyzieRedeem = async () => {
-    if (!window.electron) return;
-    setWyzieRedeeming(true);
-    setWyzieError("");
-    try {
-      const res = await window.electron.wyzieOpenRedeem();
-      if (res.cancelled) {
-        setWyzieRedeeming(false);
-        return;
-      }
-      if (res.timeout) {
-        setWyzieError(
-          "No key received within 10 seconds. Try again or enter it manually.",
-        );
-        setWyzieRedeeming(false);
-        return;
-      }
-      if (res.ok && res.key) {
-        // Key came from redirect URL — save directly, no extra validation
-        setWyzieApiKey(res.key);
-        await secureStorage.set(STORAGE_KEYS.WYZIE_API_KEY, res.key);
-        setWyzieError("");
-      } else {
-        setWyzieError(
-          "Could not extract key automatically. Try entering it manually.",
-        );
-      }
-    } catch (e) {
-      setWyzieError(e.message);
-    }
-    setWyzieRedeeming(false);
-  };
-
-  const handleWyzieCopy = () => {
-    navigator.clipboard.writeText(wyzieApiKey.trim()).then(() => {
-      setWyzieCopied(true);
-      setTimeout(() => setWyzieCopied(false), 1500);
-    });
-  };
-
-  const handleSave = () => {
-    storage.set(STORAGE_KEYS.SUBTITLE_ENABLED, enabled ? 1 : 0);
-    storage.set(STORAGE_KEYS.SUBTITLE_LANG, lang);
-    secureStorage.set(STORAGE_KEYS.SUBDL_API_KEY, subdlApiKey.trim());
-    secureStorage.set(STORAGE_KEYS.WYZIE_API_KEY, wyzieApiKey.trim());
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-
-  return (
-    <div style={{ marginBottom: 40 }}>
-      <div className="settings-section-title">Subtitle Downloads</div>
-
-      {/* Source info */}
-      <div
-        style={{
-          fontSize: 13,
-          color: "var(--text3)",
-          marginBottom: 20,
-          lineHeight: 1.7,
-        }}
-      >
-        <span style={{ color: "var(--text)", fontWeight: 600 }}>
-          Wyzie Subs
-        </span>{" "}
-        is used by default and requires a free API key (no account needed).
-        Optionally add a{" "}
-        <span
-          style={{
-            color: "var(--red)",
-            cursor: "pointer",
-            textDecoration: "underline",
-          }}
-          onClick={() =>
-            window.electron?.openExternal("https://subdl.com/settings")
-          }
-        >
-          SubDL API key
-        </span>{" "}
-        (free), to use SubDL as the primary source instead.
-        {hasSubdlKey && (
-          <span
-            style={{
-              display: "inline-block",
-              marginLeft: 8,
-              fontSize: 11,
-              fontWeight: 700,
-              padding: "1px 7px",
-              borderRadius: 3,
-              background: "rgba(99,149,255,0.15)",
-              color: "#6395ff",
-              border: "1px solid rgba(99,149,255,0.3)",
-            }}
-          >
-            SubDL ACTIVE
-          </span>
-        )}
-      </div>
-
-      {/* Enable toggle */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          marginBottom: 20,
-        }}
-      >
-        <Toggle value={enabled} onChange={setEnabled} />
-        <span
-          style={{
-            fontSize: 14,
-            color: enabled ? "var(--text)" : "var(--text3)",
-          }}
-        >
-          {enabled
-            ? "Auto-download subtitles when downloading videos"
-            : "Subtitle download disabled"}
-        </span>
-      </div>
-
-      {enabled && (
-        <>
-          {/* Default language */}
-          <div style={{ marginBottom: 16 }}>
-            <div
-              style={{ fontSize: 12, color: "var(--text3)", marginBottom: 6 }}
-            >
-              Default language
-            </div>
-            <SettingsSelect
-              value={lang}
-              onChange={(v) => setLang(v)}
-              options={SUBTITLE_LANGUAGES.map((l) => ({
-                value: l.code,
-                label: l.label,
-              }))}
-            />
-          </div>
-
-          {/* Wyzie API key */}
-          <div style={{ marginBottom: 20 }}>
-            <div
-              style={{ fontSize: 12, color: "var(--text3)", marginBottom: 6 }}
-            >
-              Wyzie API key{" "}
-              <span
-                style={{
-                  marginLeft: 8,
-                  fontSize: 10,
-                  fontWeight: 700,
-                  padding: "1px 5px",
-                  borderRadius: 3,
-                  background: hasWyzieKey
-                    ? "rgba(99,202,183,0.12)"
-                    : "rgba(255,180,80,0.12)",
-                  color: hasWyzieKey ? "#63cab7" : "#ffb450",
-                  border: `1px solid ${hasWyzieKey ? "rgba(99,202,183,0.25)" : "rgba(255,180,80,0.25)"}`,
-                }}
-              >
-                {hasWyzieKey ? "SET" : "REQUIRED"}
-              </span>
-            </div>
-            <div
-              style={{
-                fontSize: 12,
-                color: "var(--text3)",
-                marginBottom: 8,
-                lineHeight: 1.5,
-              }}
-            >
-              Required for Wyzie Subs. Claim a free key, no account needed.
-            </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
-            >
-              <input
-                className="apikey-input"
-                style={{ flex: 1, maxWidth: 340, marginBottom: 0 }}
-                type={showWyzieKey ? "text" : "password"}
-                placeholder="wyzie-..."
-                value={wyzieApiKey}
-                onChange={(e) => setWyzieApiKey(e.target.value)}
-              />
-              <button
-                className="btn btn-ghost"
-                style={{ padding: "6px 12px", fontSize: 12 }}
-                onClick={() => setShowWyzieKey((v) => !v)}
-              >
-                {showWyzieKey ? "Hide" : "Show"}
-              </button>
-              {hasWyzieKey && (
-                <button
-                  className="btn btn-ghost"
-                  style={{ padding: "6px 12px", fontSize: 12 }}
-                  onClick={handleWyzieCopy}
-                  title="Copy key"
-                >
-                  {wyzieCopied ? "Copied!" : "Copy"}
-                </button>
-              )}
-              {hasWyzieKey && (
-                <button
-                  className="btn btn-ghost"
-                  style={{ padding: "6px 12px", fontSize: 12 }}
-                  onClick={() =>
-                    window.electron?.openExternal(
-                      `https://sub.wyzie.io/notice?key=${wyzieApiKey.trim()}`,
-                    )
-                  }
-                  title="Open notice page for this key"
-                >
-                  Notice ↗
-                </button>
-              )}
-              {wyzieRedeeming ? (
-                <span style={{ fontSize: 12, color: "var(--text3)" }}>
-                  Opening redeem page…
-                </span>
-              ) : !hasWyzieKey ? (
-                <button
-                  className="btn btn-ghost"
-                  style={{
-                    padding: "6px 12px",
-                    fontSize: 12,
-                    color: "var(--accent)",
-                  }}
-                  onClick={handleWyzieRedeem}
-                >
-                  Get free key ↗
-                </button>
-              ) : null}
-            </div>
-            {wyzieError && (
-              <div
-                style={{
-                  marginTop: 8,
-                  fontSize: 12,
-                  color: "#ff6060",
-                  padding: "6px 10px",
-                  borderRadius: 6,
-                  background: "rgba(255,80,80,0.08)",
-                  border: "1px solid rgba(255,80,80,0.2)",
-                }}
-              >
-                {wyzieError}
-              </div>
-            )}
-          </div>
-
-          {/* SubDL API key */}
-          <div style={{ marginBottom: 8 }}>
-            <div
-              style={{ fontSize: 12, color: "var(--text3)", marginBottom: 6 }}
-            >
-              SubDL API key{" "}
-              <span
-                style={{
-                  color: "var(--text3)",
-                  cursor: "pointer",
-                  fontSize: 11,
-                }}
-                onClick={() =>
-                  window.electron?.openExternal("https://subdl.com/settings")
-                }
-              >
-                (free, register at subdl.com ↗)
-              </span>
-              <span
-                style={{
-                  marginLeft: 8,
-                  fontSize: 10,
-                  fontWeight: 700,
-                  padding: "1px 5px",
-                  borderRadius: 3,
-                  background: "rgba(99,202,183,0.12)",
-                  color: "#63cab7",
-                  border: "1px solid rgba(99,202,183,0.25)",
-                }}
-              >
-                OPTIONAL
-              </span>
-            </div>
-            <div
-              style={{
-                fontSize: 12,
-                color: "var(--text3)",
-                marginBottom: 8,
-                lineHeight: 1.5,
-              }}
-            >
-              Leave empty to use{" "}
-              <strong style={{ color: "var(--text)" }}>Wyzie Subs</strong>{" "}
-              (default, requires Wyzie API key above). Add a SubDL key to switch
-              to SubDL as the primary source.
-            </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input
-                className="apikey-input"
-                style={{ flex: 1, maxWidth: 400, marginBottom: 0 }}
-                type={showSubdlKey ? "text" : "password"}
-                placeholder="SubDL API key, leave empty to use Wyzie"
-                value={subdlApiKey}
-                onChange={(e) => setSubdlApiKey(e.target.value)}
-              />
-              <button
-                className="btn btn-ghost"
-                style={{ padding: "6px 12px", fontSize: 12 }}
-                onClick={() => setShowSubdlKey((v) => !v)}
-              >
-                {showSubdlKey ? "Hide" : "Show"}
-              </button>
-              {subdlApiKey.trim() && (
-                <button
-                  className="btn btn-ghost"
-                  style={{
-                    padding: "6px 12px",
-                    fontSize: 12,
-                    color: "var(--text3)",
-                  }}
-                  onClick={() => setSubdlApiKey("")}
-                  title="Clear key (revert to Wyzie)"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-
-      <div
-        style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}
-      >
-        <button className="btn btn-primary" onClick={handleSave}>
-          Save
-        </button>
-        {saved && (
-          <span style={{ fontSize: 13, color: "#4caf50" }}>✓ Saved</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Notifications Section ─────────────────────────────────────────────────────
-function NotificationsSection() {
-  const [notifyDownload, setNotifyDownload] = useState(
-    () => storage.get(STORAGE_KEYS.NOTIFY_DOWNLOAD_COMPLETE) !== false,
-  );
-  const [notifyEpisode, setNotifyEpisode] = useState(() => {
-    const stored = storage.get(STORAGE_KEYS.NOTIFY_NEW_EPISODE);
-    return stored === null || stored === undefined ? true : !!stored;
-  });
-  const [saved, setSaved] = useState(false);
-
-  const saveSettings = () => {
-    storage.set(STORAGE_KEYS.NOTIFY_DOWNLOAD_COMPLETE, notifyDownload);
-    storage.set(STORAGE_KEYS.NOTIFY_NEW_EPISODE, notifyEpisode);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-
-  const ToggleRow = ({ label, description, value, onChange }) => (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        gap: 14,
-        padding: "16px 0",
-        borderBottom: "1px solid var(--border)",
-      }}
-    >
-      <Toggle value={value} onChange={onChange} />
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text)" }}>
-          {label}
-        </div>
-        <div
-          style={{
-            fontSize: 12,
-            color: "var(--text3)",
-            marginTop: 3,
-            lineHeight: 1.5,
-          }}
-        >
-          {description}
-        </div>
-      </div>
-    </div>
-  );
-
-  return (
-    <div style={{ marginBottom: 40 }}>
-      <div className="settings-section-title">Desktop Notifications</div>
-      <div
-        style={{
-          fontSize: 13,
-          color: "var(--text3)",
-          marginBottom: 16,
-          lineHeight: 1.6,
-        }}
-      >
-        Control which events trigger a desktop notification.
-      </div>
-
-      <div
-        style={{
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 10,
-          padding: "0 16px",
-          marginBottom: 20,
-        }}
-      >
-        <ToggleRow
-          label="Notify when a download completes"
-          description="Shows a desktop notification when an item finishes downloading."
-          value={notifyDownload}
-          onChange={setNotifyDownload}
-        />
-        <ToggleRow
-          label="Notify about new episodes on startup"
-          description="On startup, checks every TV series you have saved for newly released episodes and notifies you if any aired since the last check."
-          value={notifyEpisode}
-          onChange={setNotifyEpisode}
-        />
-      </div>
-
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <button className="btn btn-primary" onClick={saveSettings}>
-          Save
-        </button>
-        {saved && (
-          <span style={{ fontSize: 13, color: "#48c774" }}>✓ Saved</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ── Section Group Header ──────────────────────────────────────────────────────
 function SectionGroupHeader({ title, subtitle }) {
   return (
@@ -2367,7 +1525,7 @@ const SUPPORTS_HIGHLIGHT =
 const SECTION_NAV = [
   {
     id: "updates",
-    label: "Updates & API",
+    label: "General & API",
     icon: "↑",
     keywords: [
       "update",
@@ -2426,51 +1584,6 @@ const SECTION_NAV = [
     ],
   },
   {
-    id: "subtitles",
-    label: "Subtitles",
-    icon: "CC",
-    keywords: [
-      "subtitle",
-      "subdl",
-      "wyzie",
-      "language",
-      "caption",
-      "srt",
-      "download",
-      "cc",
-    ],
-  },
-  {
-    id: "downloads",
-    label: "Downloads",
-    icon: "⬇",
-    keywords: [
-      "download",
-      "folder",
-      "path",
-      "save",
-      "video",
-      "movies",
-      "files",
-    ],
-  },
-  {
-    id: "notifications",
-    label: "Notifications",
-    icon: "🔔",
-    keywords: [
-      "notification",
-      "notify",
-      "alert",
-      "desktop",
-      "episode",
-      "download",
-      "watchlist",
-      "new episode",
-      "release",
-    ],
-  },
-  {
     id: "interface",
     label: "Interface",
     icon: "✦",
@@ -2505,23 +1618,6 @@ const SECTION_NAV = [
     ],
   },
   {
-    id: "integrations",
-    label: "Integrations",
-    icon: "🔗",
-    keywords: [
-      "integration",
-      "trakt",
-      "discord",
-      "anilist",
-      "sync",
-      "rpc",
-      "oauth",
-      "callback",
-      "login",
-      "status"
-    ],
-  },
-  {
     id: "backup",
     label: "Backup",
     icon: "💾",
@@ -2553,9 +1649,8 @@ const SECTION_NAV = [
   },
 ];
 
-function SettingsTopBar({ sectionRefs, contentRef }) {
+function SettingsTopBar({ contentRef }) {
   const [searchOpen, setSearchOpen] = useState(false);
-  const [navOpen, setNavOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [matchCount, setMatchCount] = useState(0);
   const [currentMatch, setCurrentMatch] = useState(0);
@@ -2563,7 +1658,6 @@ function SettingsTopBar({ sectionRefs, contentRef }) {
   const currentMatchRef = useRef(0);
   const matchCountRef = useRef(0);
   const inputRef = useRef(null);
-  const navRef = useRef(null);
   const searchBarRef = useRef(null);
   const debounceTimer = useRef(null);
   const rafHandle = useRef(null);
@@ -2695,7 +1789,6 @@ function SettingsTopBar({ sectionRefs, contentRef }) {
     const handler = (e) => {
       if (e.key === "Escape") {
         closeSearch();
-        setNavOpen(false);
         return;
       }
       if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "f")) {
@@ -2719,17 +1812,6 @@ function SettingsTopBar({ sectionRefs, contentRef }) {
     return () => document.removeEventListener("keydown", handler);
   }, [searchOpen]);
 
-  // Close nav on outside click
-  useEffect(() => {
-    if (!navOpen) return;
-    const handler = (e) => {
-      if (navRef.current && !navRef.current.contains(e.target))
-        setNavOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [navOpen]);
-
   // Clear highlights + close search when clicking outside the search bar
   useEffect(() => {
     if (!searchOpen) return;
@@ -2743,12 +1825,6 @@ function SettingsTopBar({ sectionRefs, contentRef }) {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [searchOpen]);
-
-  const scrollTo = (id) => {
-    const el = sectionRefs[id]?.current;
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-    setNavOpen(false);
-  };
 
   const handleQueryChange = (e) => {
     const val = e.target.value;
@@ -3031,134 +2107,64 @@ function SettingsTopBar({ sectionRefs, contentRef }) {
           )}
         </div>
 
-        {/* ── Jump to section dropdown ── */}
-        <div ref={navRef} style={{ position: "relative", flexShrink: 0 }}>
-          <button
-            onClick={() => setNavOpen((o) => !o)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              background: navOpen ? "var(--surface3)" : "var(--surface2)",
-              border: `1px solid ${navOpen ? "var(--red)" : "var(--border)"}`,
-              boxShadow: navOpen ? "0 0 0 3px rgba(229,9,20,0.1)" : "none",
-              borderRadius: 8,
-              padding: "6px 14px",
-              fontSize: 13,
-              color: "var(--text)",
-              cursor: "pointer",
-              transition: "all 0.15s",
-              fontFamily: "var(--font-body)",
-            }}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <line x1="8" y1="6" x2="21" y2="6" />
-              <line x1="8" y1="12" x2="21" y2="12" />
-              <line x1="8" y1="18" x2="21" y2="18" />
-              <circle cx="3" cy="6" r="1" fill="currentColor" />
-              <circle cx="3" cy="12" r="1" fill="currentColor" />
-              <circle cx="3" cy="18" r="1" fill="currentColor" />
-            </svg>
-            Jump to Section
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="var(--text3)"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              style={{
-                transform: navOpen ? "rotate(180deg)" : "rotate(0deg)",
-                transition: "transform 0.2s",
-                flexShrink: 0,
-              }}
-            >
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </button>
-
-          {navOpen && (
-            <div
-              style={{
-                position: "absolute",
-                top: "calc(100% + 6px)",
-                right: 0,
-                zIndex: 200,
-                background: "var(--surface3)",
-                border: "1px solid var(--border)",
-                borderRadius: 12,
-                boxShadow: "0 20px 60px rgba(0,0,0,0.55)",
-                minWidth: 230,
-                padding: 6,
-              }}
-            >
-              {SECTION_NAV.map((s) => (
-                <button
-                  key={s.id}
-                  onMouseDown={() => scrollTo(s.id)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    width: "100%",
-                    textAlign: "left",
-                    background: "transparent",
-                    border: "none",
-                    borderRadius: 8,
-                    padding: "9px 12px",
-                    fontSize: 13,
-                    color: "var(--text)",
-                    cursor: "pointer",
-                    transition: "background 0.1s",
-                    fontFamily: "var(--font-body)",
-                  }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.background =
-                      "rgba(255,255,255,0.07)")
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.background = "transparent")
-                  }
-                >
-                  <span
-                    style={{
-                      width: 22,
-                      textAlign: "center",
-                      fontSize: 13,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {s.icon}
-                  </span>
-                  <span style={{ flex: 1 }}>{s.label}</span>
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="var(--text3)"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                  >
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
     </div>
+  );
+}
+
+// ── Section rail ──────────────────────────────────────────────────────────────
+// Always-visible map of the page. The active entry follows the scroll position
+// through an IntersectionObserver, so the rail answers "where am I" as well as
+// "where can I go" — which the old dropdown could not do at all.
+function SettingsNavRail({ sectionRefs }) {
+  const [active, setActive] = useState(SECTION_NAV[0]?.id);
+
+  useEffect(() => {
+    const entries = SECTION_NAV.map((section) => [
+      section.id,
+      sectionRefs[section.id]?.current,
+    ]).filter(([, el]) => el);
+    if (entries.length === 0) return undefined;
+
+    const observer = new IntersectionObserver(
+      (records) => {
+        const visible = records
+          .filter((r) => r.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (!visible) return;
+        const hit = entries.find(([, el]) => el === visible.target);
+        if (hit) setActive(hit[0]);
+      },
+      // A band across the upper third: a section counts as "current" once its
+      // heading reaches reading position, not when it first peeks into view.
+      { rootMargin: "-80px 0px -65% 0px", threshold: 0 },
+    );
+    entries.forEach(([, el]) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [sectionRefs]);
+
+  return (
+    <nav className="settings-rail" aria-label="Settings sections">
+      <div className="settings-rail__inner">
+        {SECTION_NAV.map((section) => (
+          <button
+            key={section.id}
+            type="button"
+            className={`settings-rail__item${active === section.id ? " settings-rail__item--active" : ""}`}
+            aria-current={active === section.id ? "true" : undefined}
+            onClick={() => {
+              sectionRefs[section.id]?.current?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+              });
+            }}
+          >
+            <span className="settings-rail__icon">{section.icon}</span>
+            {section.label}
+          </button>
+        ))}
+      </div>
+    </nav>
   );
 }
 
@@ -3168,120 +2174,12 @@ export default function SettingsPage({
   onChangeApiKey,
   initialSection,
 }) {
-  const [downloadPath, setDownloadPath] = useState(
-    () => storage.get(STORAGE_KEYS.DOWNLOAD_PATH) || "",
-  );
   const [watchedThreshold, setWatchedThreshold] = useState(
     () => storage.get(STORAGE_KEYS.WATCHED_THRESHOLD) ?? 20,
-  );
-  const [introSkipMode, setIntroSkipMode] = useState(
-    () => storage.get(STORAGE_KEYS.INTRO_SKIP_MODE) || "off",
-  );
-  const [defaultSubtitleOffset, setDefaultSubtitleOffset] = useState(
-    () => storage.get(STORAGE_KEYS.DEFAULT_SUBTITLE_OFFSET) ?? 0,
   );
   const [autoNextEpisode, setAutoNextEpisode] = useState(
     () => storage.get(STORAGE_KEYS.AUTO_NEXT_EPISODE) !== false,
   );
-  const [discordRpcEnabled, setDiscordRpcEnabled] = useState(
-    () => storage.get("discordRpcEnabled") !== false
-  );
-  const [traktUser, setTraktUser] = useState(
-    () => storage.get("traktToken")?.username || ""
-  );
-  const [anilistUser, setAnilistUser] = useState(
-    () => storage.get("anilistToken")?.username || ""
-  );
-  const [customTraktId, setCustomTraktId] = useState(
-    () => storage.get("traktClientId") || ""
-  );
-  const [customTraktSecret, setCustomTraktSecret] = useState(
-    () => storage.get("traktClientSecret") || ""
-  );
-  const [customAnilistId, setCustomAnilistId] = useState(
-    () => storage.get("anilistClientId") || ""
-  );
-  const [customAnilistSecret, setCustomAnilistSecret] = useState(
-    () => storage.get("anilistClientSecret") || ""
-  );
-
-  useEffect(() => {
-    if (!window.electron) return;
-    const h = window.electron.onOauthCallback(async ({ code, state }) => {
-      try {
-        if (state === "trakt") {
-          const data = await exchangeTraktCode(code);
-          const config = getTraktConfig();
-          const userRes = await fetch("https://api.trakt.tv/users/me", {
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${data.access_token}`,
-              "trakt-api-version": "2",
-              "trakt-api-key": config.clientId
-            }
-          });
-          if (userRes.ok) {
-            const userData = await userRes.json();
-            data.username = userData.username || userData.name || "Connected";
-            storage.set("traktToken", data);
-            setTraktUser(data.username);
-          } else {
-            setTraktUser("Connected");
-          }
-        } else if (state === "anilist") {
-          const data = await exchangeAnilistCode(code);
-          const userRes = await fetch("https://graphql.anilist.co", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${data.access_token}`
-            },
-            body: JSON.stringify({
-              query: `query { Viewer { name } }`
-            })
-          });
-          if (userRes.ok) {
-            const userJson = await userRes.json();
-            const name = userJson.data?.Viewer?.name || "Connected";
-            data.username = name;
-            storage.set("anilistToken", data);
-            setAnilistUser(name);
-          } else {
-            setAnilistUser("Connected");
-          }
-        }
-      } catch (err) {
-        console.error("OAuth Exchange failed:", err);
-      } finally {
-        window.electron.stopOauthServer();
-      }
-    });
-    return () => window.electron.offOauthCallback(h);
-  }, []);
-
-  const handleConnectTrakt = () => {
-    window.electron.startOauthServer();
-    const config = getTraktConfig();
-    const url = `https://trakt.tv/oauth/authorize?response_type=code&client_id=${config.clientId}&redirect_uri=http://localhost:34882/callback&state=trakt`;
-    window.electron.openExternal(url);
-  };
-
-  const handleConnectAnilist = () => {
-    window.electron.startOauthServer();
-    const config = getAnilistConfig();
-    const url = `https://anilist.co/api/v2/oauth/authorize?client_id=${config.clientId}&redirect_uri=http://localhost:34882/callback&response_type=code&state=anilist`;
-    window.electron.openExternal(url);
-  };
-
-  const handleDisconnectTrakt = () => {
-    storage.remove("traktToken");
-    setTraktUser("");
-  };
-
-  const handleDisconnectAnilist = () => {
-    storage.remove("anilistToken");
-    setAnilistUser("");
-  };
 
   const [saved, setSaved] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -3293,12 +2191,8 @@ export default function SettingsPage({
   const secUpdates = useRef(null);
   const secContent = useRef(null);
   const secPlayback = useRef(null);
-  const secSubtitles = useRef(null);
-  const secDownloads = useRef(null);
-  const secNotifications = useRef(null);
   const secInterface = useRef(null);
   const secLibrary = useRef(null);
-  const secIntegrations = useRef(null);
   const secBackup = useRef(null);
   const secStorage = useRef(null);
 
@@ -3306,12 +2200,8 @@ export default function SettingsPage({
     updates: secUpdates,
     content: secContent,
     playback: secPlayback,
-    subtitles: secSubtitles,
-    downloads: secDownloads,
-    notifications: secNotifications,
     interface: secInterface,
     library: secLibrary,
-    integrations: secIntegrations,
     backup: secBackup,
     storage: secStorage,
   };
@@ -3424,32 +2314,10 @@ export default function SettingsPage({
     })();
   }, []);
 
-  const pickFolder = async () => {
-    if (!isElectron) return;
-    const folder = await window.electron.pickFolder();
-    if (folder) {
-      setDownloadPath(folder);
-      storage.set(STORAGE_KEYS.DOWNLOAD_PATH, folder);
-      flash();
-    }
-  };
-
-  const handleSavePath = () => {
-    storage.set(STORAGE_KEYS.DOWNLOAD_PATH, downloadPath);
-    flash();
-  };
-
   const handleSaveThreshold = () => {
     const val = Math.max(1, Math.min(300, Number(watchedThreshold) || 20));
     setWatchedThreshold(val);
     storage.set(STORAGE_KEYS.WATCHED_THRESHOLD, val);
-    flash();
-  };
-
-  const handleSaveSubOffset = () => {
-    const val = Math.max(-5.0, Math.min(5.0, parseFloat(defaultSubtitleOffset) || 0));
-    setDefaultSubtitleOffset(val);
-    storage.set(STORAGE_KEYS.DEFAULT_SUBTITLE_OFFSET, val);
     flash();
   };
 
@@ -3547,27 +2415,17 @@ export default function SettingsPage({
       )}
 
       {/* ── Sticky search & navigation bar ── */}
-      <SettingsTopBar sectionRefs={sectionRefs} contentRef={contentRef} />
+      <SettingsTopBar contentRef={contentRef} />
 
-      <div
-        ref={contentRef}
-        className="fade-in"
-        style={{ padding: "40px 48px 80px" }}
-      >
-        {/* Page title */}
-        <div
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 48,
-            letterSpacing: 1,
-            marginBottom: 6,
-          }}
-        >
-          SETTINGS
-        </div>
-        <div style={{ color: "var(--text3)", fontSize: 14, marginBottom: 48 }}>
-          App configuration for Streambert
-        </div>
+      <div className="settings-shell">
+        <SettingsNavRail sectionRefs={sectionRefs} />
+
+        <div ref={contentRef} className="fade-in settings-content">
+          <div className="settings-page-title">SETTINGS</div>
+          <div className="settings-page-subtitle">
+            Everything below applies to this browser. Options that only work in
+            the desktop app are not shown.
+          </div>
 
         {/* ══════════════════════════════════════════════════════════════════ */}
         {/* GROUP: GENERAL                                                     */}
@@ -3577,11 +2435,6 @@ export default function SettingsPage({
             title="General"
             subtitle="App version, updates, API credentials and Languages"
           />
-
-          {/* Version & Updates */}
-          <VersionSection />
-
-          <Divider />
 
           {/* TMDB API Token */}
           <div style={{ marginBottom: 40 }}>
@@ -3921,255 +2774,8 @@ export default function SettingsPage({
             </div>
           </div>
 
-          {/* Intro Skip */}
-          <div style={{ marginBottom: 40 }}>
-            <div className="settings-section-title">Anime Intro Skip</div>
-            <div
-              style={{
-                fontSize: 13,
-                color: "var(--text3)",
-                marginBottom: 16,
-                lineHeight: 1.6,
-              }}
-            >
-              Uses{" "}
-              <span style={{ color: "var(--text)", fontWeight: 600 }}>
-                AniSkip
-              </span>{" "}
-              to detect and skip opening/ending segments. Only active for animes
-              and when using{" "}
-              <span style={{ color: "var(--text)", fontWeight: 600 }}>
-                AllManga
-              </span>{" "}
-              as source.
-            </div>
-            <div
-              style={{
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: 10,
-                padding: "0 16px",
-              }}
-            >
-              {[
-                {
-                  value: "off",
-                  label: "Off",
-                  desc: "Intro skip is disabled.",
-                },
-                {
-                  value: "auto",
-                  label: "Auto Skip",
-                  desc: "Automatically jumps past the intro/outro when reached.",
-                },
-                {
-                  value: "manual",
-                  label: "Manual Skip",
-                  desc: 'Shows a "Skip Intro" button at the bottom of the player.',
-                },
-              ].map(({ value, label, desc }, i, arr) => (
-                <div
-                  key={value}
-                  onClick={() => {
-                    setIntroSkipMode(value);
-                    storage.set(STORAGE_KEYS.INTRO_SKIP_MODE, value);
-                  }}
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 14,
-                    padding: "16px 0",
-                    borderBottom:
-                      i < arr.length - 1 ? "1px solid var(--border)" : "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  {/* Radio dot */}
-                  <div
-                    style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: "50%",
-                      border: `2px solid ${introSkipMode === value ? "var(--red)" : "var(--border)"}`,
-                      background:
-                        introSkipMode === value ? "var(--red)" : "transparent",
-                      flexShrink: 0,
-                      marginTop: 1,
-                      boxShadow:
-                        introSkipMode === value
-                          ? "0 0 0 3px rgba(229,9,20,0.18)"
-                          : "none",
-                      transition: "all 0.15s",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    {introSkipMode === value && (
-                      <div
-                        style={{
-                          width: 6,
-                          height: 6,
-                          borderRadius: "50%",
-                          background: "#fff",
-                        }}
-                      />
-                    )}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 500,
-                        color: "var(--text)",
-                      }}
-                    >
-                      {label}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "var(--text3)",
-                        marginTop: 3,
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      {desc}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <Divider />
-
-          {/* Default Subtitle Offset */}
-          <div style={{ marginBottom: 40 }}>
-            <div className="settings-section-title">Default Subtitle Offset</div>
-            <div
-              style={{
-                fontSize: 13,
-                color: "var(--text3)",
-                marginBottom: 16,
-                lineHeight: 1.6,
-              }}
-            >
-              Adjust the default timing offset for subtitles (seconds). Negative shifts subtitles earlier, positive shifts them later.
-            </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="-5.0"
-                  max="5.0"
-                  className="apikey-input"
-                  style={{ width: 100, marginBottom: 0 }}
-                  value={defaultSubtitleOffset}
-                  onChange={(e) => setDefaultSubtitleOffset(e.target.value)}
-                />
-                <span style={{ fontSize: 14, color: "var(--text2)" }}>
-                  seconds
-                </span>
-              </div>
-              <button className="btn btn-primary" onClick={handleSaveSubOffset}>
-                Save
-              </button>
-            </div>
-          </div>
-
           <Divider />
           <VideoSourcesSection />
-        </div>
-
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* GROUP: SUBTITLES                                                   */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        <div ref={secSubtitles} style={{ scrollMarginTop: 80 }}>
-          <SectionGroupHeader
-            title="Subtitles"
-            subtitle="Subtitle download source, preferred language, and API key"
-          />
-          <SubtitleSettingsSection />
-        </div>
-
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* GROUP: DOWNLOADS                                                   */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        <div ref={secDownloads} style={{ scrollMarginTop: 80 }}>
-          <SectionGroupHeader
-            title="Downloads"
-            subtitle="Where downloaded video files are saved on disk"
-          />
-
-          <div style={{ marginBottom: 40 }}>
-            <div className="settings-section-title">Download Folder</div>
-            <div
-              style={{
-                fontSize: 13,
-                color: "var(--text3)",
-                marginBottom: 16,
-                lineHeight: 1.6,
-              }}
-            >
-              Downloaded videos will be saved here. Make sure the folder exists
-              and Streambert has write access to it.
-            </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
-            >
-              <input
-                className="apikey-input"
-                style={{ flex: 1, minWidth: 260, marginBottom: 0 }}
-                placeholder="/home/you/Movies"
-                value={downloadPath}
-                onChange={(e) => setDownloadPath(e.target.value)}
-              />
-              {isElectron && (
-                <button className="btn btn-secondary" onClick={pickFolder}>
-                  Browse …
-                </button>
-              )}
-              <button className="btn btn-primary" onClick={handleSavePath}>
-                Save
-              </button>
-            </div>
-            {saved && (
-              <div style={{ marginTop: 10, fontSize: 13, color: "#4caf50" }}>
-                ✓ Saved
-              </div>
-            )}
-            {!downloadPath && (
-              <div style={{ marginTop: 10, fontSize: 13, color: "var(--red)" }}>
-                ⚠ No download folder set - videos cannot be downloaded until you
-                set one.
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* GROUP: NOTIFICATIONS                                               */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        <div ref={secNotifications} style={{ scrollMarginTop: 80 }}>
-          <SectionGroupHeader
-            title="Notifications"
-            subtitle="Desktop alerts for downloads and new episode releases"
-          />
-          <NotificationsSection />
         </div>
 
         {/* ══════════════════════════════════════════════════════════════════ */}
@@ -4199,174 +2805,6 @@ export default function SettingsPage({
         </div>
 
         <Divider />
-
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* GROUP: INTEGRATIONS                                                */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        <div ref={secIntegrations} style={{ scrollMarginTop: 80 }}>
-          <SectionGroupHeader
-            title="Integrations"
-            subtitle="Connect Trakt, AniList, and enable Discord Rich Presence"
-          />
-
-          {/* Discord RPC */}
-          <div style={{ marginBottom: 40 }}>
-            <div className="settings-section-title">Discord Rich Presence</div>
-            <div
-              style={{
-                fontSize: 13,
-                color: "var(--text3)",
-                marginBottom: 16,
-                lineHeight: 1.6,
-              }}
-            >
-              Show what you're watching, season/episode details, and elapsed time on your Discord profile.
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <input
-                type="checkbox"
-                id="discordRpcToggle"
-                checked={discordRpcEnabled}
-                onChange={(e) => {
-                  const val = e.target.checked;
-                  setDiscordRpcEnabled(val);
-                  storage.set("discordRpcEnabled", val);
-                  if (!val) {
-                    window.electron?.clearDiscordActivity();
-                  }
-                }}
-                style={{ width: 18, height: 18, cursor: "pointer" }}
-              />
-              <label htmlFor="discordRpcToggle" style={{ fontSize: 14, color: "var(--text2)", cursor: "pointer" }}>
-                Enable Discord Rich Presence status
-              </label>
-            </div>
-          </div>
-
-          <Divider />
-
-          {/* Trakt Sync */}
-          <div style={{ marginBottom: 40 }}>
-            <div className="settings-section-title">Trakt.tv Sync</div>
-            <div
-              style={{
-                fontSize: 13,
-                color: "var(--text3)",
-                marginBottom: 16,
-                lineHeight: 1.6,
-              }}
-            >
-              Automatically synchronize your watch history, watchlist, and movie/episode progress with Trakt.
-            </div>
-            {traktUser ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                <span style={{ fontSize: 14, color: "var(--text2)" }}>
-                  Connected as: <strong style={{ color: "var(--red)" }}>{traktUser}</strong>
-                </span>
-                <button className="btn btn-secondary" style={{ padding: "6px 12px" }} onClick={handleDisconnectTrakt}>
-                  Disconnect
-                </button>
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div>
-                  <button className="btn btn-primary" onClick={handleConnectTrakt}>
-                    Connect Trakt Account
-                  </button>
-                </div>
-                <details style={{ fontSize: 12, color: "var(--text3)", cursor: "pointer" }}>
-                  <summary style={{ padding: "4px 0" }}>Developer API Credentials (Optional override)</summary>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8, maxWidth: 450 }}>
-                    <input
-                      type="text"
-                      className="apikey-input"
-                      style={{ fontSize: 12, padding: "6px 10px", marginBottom: 0 }}
-                      placeholder="Trakt Client ID"
-                      value={customTraktId}
-                      onChange={(e) => {
-                        setCustomTraktId(e.target.value);
-                        storage.set("traktClientId", e.target.value);
-                      }}
-                    />
-                    <input
-                      type="password"
-                      className="apikey-input"
-                      style={{ fontSize: 12, padding: "6px 10px", marginBottom: 0 }}
-                      placeholder="Trakt Client Secret"
-                      value={customTraktSecret}
-                      onChange={(e) => {
-                        setCustomTraktSecret(e.target.value);
-                        storage.set("traktClientSecret", e.target.value);
-                      }}
-                    />
-                  </div>
-                </details>
-              </div>
-            )}
-          </div>
-
-          <Divider />
-
-          {/* AniList Sync */}
-          <div style={{ marginBottom: 40 }}>
-            <div className="settings-section-title">AniList Progress Sync</div>
-            <div
-              style={{
-                fontSize: 13,
-                color: "var(--text3)",
-                marginBottom: 16,
-                lineHeight: 1.6,
-              }}
-            >
-              Automatically synchronize your anime progress and media list status (Watching, Planning, Completed) with AniList.
-            </div>
-            {anilistUser ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                <span style={{ fontSize: 14, color: "var(--text2)" }}>
-                  Connected as: <strong style={{ color: "var(--red)" }}>{anilistUser}</strong>
-                </span>
-                <button className="btn btn-secondary" style={{ padding: "6px 12px" }} onClick={handleDisconnectAnilist}>
-                  Disconnect
-                </button>
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div>
-                  <button className="btn btn-primary" onClick={handleConnectAnilist}>
-                    Connect AniList Account
-                  </button>
-                </div>
-                <details style={{ fontSize: 12, color: "var(--text3)", cursor: "pointer" }}>
-                  <summary style={{ padding: "4px 0" }}>Developer API Credentials (Optional override)</summary>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8, maxWidth: 450 }}>
-                    <input
-                      type="text"
-                      className="apikey-input"
-                      style={{ fontSize: 12, padding: "6px 10px", marginBottom: 0 }}
-                      placeholder="AniList Client ID"
-                      value={customAnilistId}
-                      onChange={(e) => {
-                        setCustomAnilistId(e.target.value);
-                        storage.set("anilistClientId", e.target.value);
-                      }}
-                    />
-                    <input
-                      type="password"
-                      className="apikey-input"
-                      style={{ fontSize: 12, padding: "6px 10px", marginBottom: 0 }}
-                      placeholder="AniList Client Secret"
-                      value={customAnilistSecret}
-                      onChange={(e) => {
-                        setCustomAnilistSecret(e.target.value);
-                        storage.set("anilistClientSecret", e.target.value);
-                      }}
-                    />
-                  </div>
-                </details>
-              </div>
-            )}
-          </div>
-        </div>
 
         {/* ══════════════════════════════════════════════════════════════════ */}
         {/* GROUP: BACKUP                                                      */}
@@ -4541,6 +2979,7 @@ export default function SettingsPage({
               </div>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </>

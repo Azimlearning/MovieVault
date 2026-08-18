@@ -5842,3 +5842,131 @@ html[data-win-titlebar][data-maximized] .main {
     line-height: 1.5;
     color: var(--text3, #9a9a9a);
 }
+
+/* ── Settings: rail + content ──────────────────────────────────────────────
+   Eleven groups on one long scroll, with the only map hidden behind a "Jump to
+   Section" dropdown, meant the page never answered "where am I". The rail is
+   always visible and follows the scroll. */
+.settings-shell {
+    display: grid;
+    grid-template-columns: 214px minmax(0, 1fr);
+    gap: 32px;
+    align-items: start;
+    padding: 32px 48px 80px;
+}
+
+.settings-rail {
+    position: sticky;
+    top: 76px;
+}
+
+.settings-rail__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border-right: 1px solid var(--border);
+    padding-right: 12px;
+}
+
+.settings-rail__item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-family: var(--font-body);
+    font-size: 13px;
+    color: var(--text3);
+    cursor: pointer;
+    transition: background .14s ease, color .14s ease;
+}
+
+.settings-rail__item:hover {
+    background: rgba(255, 255, 255, .05);
+    color: var(--text);
+}
+
+.settings-rail__item--active {
+    background: rgba(255, 255, 255, .07);
+    color: var(--text);
+    font-weight: 600;
+    box-shadow: inset 2px 0 0 var(--accent, #f5a623);
+}
+
+.settings-rail__icon {
+    width: 18px;
+    text-align: center;
+    flex-shrink: 0;
+    opacity: .8;
+}
+
+.settings-content {
+    min-width: 0;
+}
+
+.settings-page-title {
+    font-family: var(--font-display);
+    font-size: 40px;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+}
+
+.settings-page-subtitle {
+    color: var(--text3);
+    font-size: 13.5px;
+    line-height: 1.6;
+    max-width: 60ch;
+    margin-bottom: 40px;
+}
+
+/* Narrow viewports: the rail becomes a scrollable chip row above the content. */
+@media (max-width: 900px) {
+    .settings-shell {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 18px;
+        padding: 20px 18px 60px;
+    }
+
+    .settings-rail {
+        position: sticky;
+        top: 56px;
+        z-index: 30;
+        background: var(--bg, #0a0a0a);
+        padding: 6px 0;
+        margin: 0 -18px;
+    }
+
+    .settings-rail__inner {
+        flex-direction: row;
+        overflow-x: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+        padding: 0 18px 8px;
+        gap: 6px;
+        scrollbar-width: none;
+    }
+
+    .settings-rail__inner::-webkit-scrollbar {
+        display: none;
+    }
+
+    .settings-rail__item {
+        flex: 0 0 auto;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 7px 14px;
+    }
+
+    .settings-rail__item--active {
+        box-shadow: none;
+        border-color: var(--accent, #f5a623);
+    }
+
+    .settings-page-title {
+        font-size: 30px;
+    }
+}
