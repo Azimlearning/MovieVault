@@ -30,6 +30,24 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
   });
 }
 
+// A tab left open across a deploy still holds the old index, so its lazy chunk
+// hashes 404 and the error boundary catches "Failed to fetch dynamically
+// imported module". The fix is simply to fetch the new index — but only once
+// per session, or a genuinely missing chunk would reload forever.
+// Clearing the flag on load would defeat it: a chunk that is genuinely gone
+// would reload forever. A timestamp instead allows one recovery per minute, so
+// a second deploy later in a long session is still handled, while a real
+// failure falls through to the error boundary and its Reload button.
+const RELOAD_STAMP = "movievault_chunk_reload_at";
+const RELOAD_COOLDOWN_MS = 60000;
+window.addEventListener("vite:preloadError", (event) => {
+  const last = Number(sessionStorage.getItem(RELOAD_STAMP) || 0);
+  if (Date.now() - last < RELOAD_COOLDOWN_MS) return;
+  sessionStorage.setItem(RELOAD_STAMP, String(Date.now()));
+  event.preventDefault();
+  window.location.reload();
+});
+
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <App />

@@ -55,7 +55,10 @@ export function diagnosisMessage(reachability, sourceLabel) {
     case REACHABILITY.BLOCKED:
       return `${label} can't be reached from this network — an ad blocker, DNS filter, VPN or mobile carrier is most likely blocking it. Try another source, or the same one on a different network.`;
     case REACHABILITY.REACHABLE:
-      return `${label} responded but won't play inside MovieVault — the provider is refusing to be embedded. Another source usually works, or open it in a new tab.`;
+      // Two causes look identical from out here: the provider refusing to be
+      // embedded, and the provider having no source for this particular title.
+      // Naming only one of them would be a guess presented as a diagnosis.
+      return `${label} is reachable, so this is either a title it has no sources for or a frame it won't allow. Another source usually works, or open it in a new tab.`;
     default:
       return `${label} isn't responding. Try another source, or open it in a new tab.`;
   }
