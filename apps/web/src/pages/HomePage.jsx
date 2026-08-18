@@ -6,6 +6,7 @@ import GenreBrowser from "../components/GenreBrowser";
 import { tmdbFetch } from "../utils/api";
 import AsyncBoundary from "../components/AsyncBoundary";
 import HomeSkeleton from "../components/HomeSkeleton";
+import { ShuffleIcon } from "../components/Icons";
 import HeroBanner from "../components/HeroBanner";
 import { useRatings, getRatingForItem } from "../utils/useRatings";
 import { isRestricted } from "../utils/ageRating";
@@ -253,6 +254,21 @@ export default function HomePage({
     [trendingTV],
   );
 
+  const playSomething = useCallback(() => {
+    const pool = [
+      ...inProgress,
+      ...recommendedItems,
+      ...trending.map((i) => ({ ...i, media_type: "movie" })),
+      ...trendingTV.map((i) => ({ ...i, media_type: "tv" })),
+    ].filter((entry) => entry && entry.id && !watched?.[`movie_${entry.id}`]);
+
+    if (pool.length === 0) return;
+    const pick = inProgress.length
+      ? inProgress[0]
+      : pool[Math.floor(Math.random() * pool.length)];
+    onSelect({ ...pick, playDirectly: true });
+  }, [inProgress, recommendedItems, trending, trendingTV, watched, onSelect]);
+
   return (
     <div className="fade-in">
       <AsyncBoundary state={boundaryState} onRetry={onRetry} loadingComponent={<HomeSkeleton />}>
@@ -278,6 +294,23 @@ export default function HomePage({
         )}
 
       {/* ── Rows in user-configured order ── */}
+      {(trending.length > 0 || inProgress.length > 0) && (
+        <div className="play-something-row">
+          <button
+            type="button"
+            className="btn btn-secondary play-something"
+            onClick={playSomething}
+          >
+            <ShuffleIcon /> Play Something
+          </button>
+          <span className="play-something__hint">
+            {inProgress.length > 0
+              ? "Picks up whatever you left unfinished"
+              : "One tap, no browsing"}
+          </span>
+        </div>
+      )}
+
       {rowOrder.map((id) => {
         if (!rowVisible[id]) return null;
 

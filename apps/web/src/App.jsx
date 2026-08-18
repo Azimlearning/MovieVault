@@ -798,10 +798,11 @@ export default function App() {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const toastTimerRef = useRef(null);
-  const showToast = useCallback((msg) => {
+  const showToast = useCallback((msg, action = null) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setToast(msg);
-    toastTimerRef.current = setTimeout(() => setToast(null), 2500);
+    setToast(action ? { message: msg, action } : { message: msg });
+    // An offer to undo is worth a little longer on screen than a bare notice.
+    toastTimerRef.current = setTimeout(() => setToast(null), action ? 6000 : 2500);
   }, []);
 
   const getMediaType = useCallback(
@@ -812,6 +813,15 @@ export default function App() {
   const handleSelectResult = useCallback(
     (item) => {
       navigate(item.media_type === "tv" ? "tv" : "movie", item);
+    },
+    [navigate],
+  );
+
+  // Cast names and genre chips are search queries: a fact on a detail page
+  // becomes a way into the catalogue rather than a dead end (teardown §4).
+  const handleSearchFor = useCallback(
+    (term) => {
+      if (term) navigate("search", { q: term });
     },
     [navigate],
   );
@@ -945,21 +955,49 @@ export default function App() {
     }
   }, []); // no deps needed
 
-  const removeFromContinueWatching = useCallback((key) => {
-    setWatchHistory((prev) => {
-      const next = { ...prev };
-      delete next[key];
-      storage.set("watchHistory", next);
-      return next;
-    });
-    setProgress((prev) => {
-      const next = { ...prev };
-      delete next[key];
-      storage.set("progress", next);
-      return next;
-    });
-    storage.remove("dlTime_" + key);
-  }, []);
+  const removeFromContinueWatching = useCallback(
+    (key) => {
+      const removedEntry = (storage.get("watchHistory") || {})[key] ?? null;
+      const removedPct = (storage.get("progress") || {})[key] ?? null;
+      const removedTime = storage.get("dlTime_" + key) ?? null;
+
+      setWatchHistory((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        storage.set("watchHistory", next);
+        return next;
+      });
+      setProgress((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        storage.set("progress", next);
+        return next;
+      });
+      storage.remove("dlTime_" + key);
+
+      showToast("Removed from Continue Watching", {
+        label: "Undo",
+        onClick: () => {
+          if (removedEntry) {
+            setWatchHistory((prev) => {
+              const next = { ...prev, [key]: removedEntry };
+              storage.set("watchHistory", next);
+              return next;
+            });
+          }
+          if (removedPct != null) {
+            setProgress((prev) => {
+              const next = { ...prev, [key]: removedPct };
+              storage.set("progress", next);
+              return next;
+            });
+          }
+          if (removedTime != null) storage.set("dlTime_" + key, removedTime);
+        },
+      });
+    },
+    [showToast],
+  );
 
   const markWatched = useCallback((key) => {
     setWatched((prev) => {
@@ -1171,6 +1209,7 @@ export default function App() {
                 downloads={downloads}
                 onGoToDownloads={handleGoToDownloads}
                 onSelect={handleSelectResult}
+                onSearch={handleSearchFor}
               />
             )}
             {page === "tv" && selected && (
@@ -1193,6 +1232,7 @@ export default function App() {
                 downloads={downloads}
                 onGoToDownloads={handleGoToDownloads}
                 onSelect={handleSelectResult}
+                onSearch={handleSearchFor}
               />
             )}
             {page === "search" && (
@@ -1339,7 +1379,23 @@ export default function App() {
             onClose={() => setShowUpdateModal(false)}
           />
         )}
-        {toast && <div className="toast">{toast}</div>}
+        {toast && (
+          <div className="toast">
+            {toast.message}
+            {toast.action && (
+              <button
+                type="button"
+                className="toast-action"
+                onClick={() => {
+                  toast.action.onClick();
+                  setToast(null);
+                }}
+              >
+                {toast.action.label}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* ── Episode check status pill / result card ── */}
         {episodeCheckStatus && (

@@ -80,6 +80,7 @@ export default function MoviePage({
   downloads,
   onGoToDownloads,
   onSelect,
+  onSearch,
 }) {
   const [details, setDetails] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
@@ -93,7 +94,7 @@ export default function MoviePage({
     document.title = `${resolved} — MovieVault`;
     canonicaliseTitleSlug(item?.id, resolved);
   }, [details, item]);
-  const [playing, setPlaying] = useState(false);
+  const [playing, setPlaying] = useState(() => !!item?.playDirectly);
   // Teardown §6.5: the end of a film is the start of the next decision. An
   // embedded provider never tells us it finished, so this is raised by the only
   // completion signal the web build actually has — the user marking 100%.
@@ -1201,6 +1202,7 @@ export default function MoviePage({
     onHistory({ ...d, media_type: "movie" });
   }, [d, onHistory]);
 
+
   // Intercept fullscreen requests from embedded players (vidsrc / 2embed use
   // the native Fullscreen API which would otherwise fullscreen the entire app).
   // Videasy and AllManga handle fullscreen internally via CSS, skip those.
@@ -1288,6 +1290,16 @@ export default function MoviePage({
     today.setHours(0, 0, 0, 0);
     return new Date(d.release_date) > today;
   }, [d.release_date]);
+  // A title arrived at with intent to watch — the hero's Play CTA, or Play
+  // Something — is recorded as started; the player itself opens from the
+  // initial `playing` state below. The render guard still enforces the age
+  // rating and release date, so this cannot open restricted content.
+  useEffect(() => {
+    if (item?.playDirectly && !restricted && !isUnreleased) {
+      onHistory({ ...d, media_type: "movie" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item?.playDirectly, restricted, isUnreleased]);
 
   // Check if this movie is already downloaded or currently downloading
   const movieDownload = (downloads || []).find(
@@ -1339,9 +1351,15 @@ export default function MoviePage({
             <div className="detail-title">{title}</div>
             <div className="genres">
               {displayGenres.map((g) => (
-                <span key={g.id} className="genre-tag">
+                <button
+                  key={g.id}
+                  type="button"
+                  className="genre-tag genre-tag--link"
+                  onClick={() => onSearch?.(g.name)}
+                  title={`Browse ${g.name}`}
+                >
                   {g.name}
-                </span>
+                </button>
               ))}
             </div>
             <div className="detail-meta">
@@ -2041,7 +2059,7 @@ export default function MoviePage({
 
       {/* ── Cast row ── */}
       {castList.length > 0 && (
-        <CastRow cast={castList} max={15} />
+        <CastRow cast={castList} max={15} onSearch={onSearch} />
       )}
 
       {/* ── Production details (collapsible) ── */}

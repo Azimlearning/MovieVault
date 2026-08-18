@@ -376,6 +376,7 @@ export default function TVPage({
   downloads,
   onGoToDownloads,
   onSelect,
+  onSearch,
 }) {
   const [details, setDetails] = useState(null);
   const [detailsError, setDetailsError] = useState(null);
@@ -829,6 +830,20 @@ export default function TVPage({
     const nextUp = episodes.find((ep) => !watched?.[keyFor(ep)]);
     return nextUp ? { ep: nextUp, resuming: false } : null;
   }, [currentSeasonEpisodes, item.id, selectedSeason, progress, watched]);
+
+  // A series arrived at with intent to watch — the hero's Play CTA, or Play
+  // Something — opens on the episode it would resume. Unlike a film this cannot
+  // be an initial state: the episode is only known once the season data lands.
+  const autoPlayedRef = useRef(false);
+  useEffect(() => {
+    if (autoPlayedRef.current || !item?.playDirectly) return;
+    if (restricted || !resumeTarget) return;
+    autoPlayedRef.current = true;
+    // The target episode depends on an async season fetch, so unlike a film
+    // there is no initial state to open from.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    playEpisode(resumeTarget.ep);
+  }, [item?.playDirectly, restricted, resumeTarget, playEpisode]);
 
   useEffect(() => {
     if (!playing || autoSwitchedRef.current || isAsync || !playerEp) {
@@ -2301,9 +2316,15 @@ export default function TVPage({
                 <div className="detail-title">{title}</div>
                 <div className="genres">
                   {displayGenres.map((g) => (
-                    <span key={g.id} className="genre-tag">
+                    <button
+                      key={g.id}
+                      type="button"
+                      className="genre-tag genre-tag--link"
+                      onClick={() => onSearch?.(g.name)}
+                      title={`Browse ${g.name}`}
+                    >
                       {g.name}
-                    </span>
+                    </button>
                   ))}
                 </div>
                 <div className="detail-meta">
@@ -3274,7 +3295,7 @@ export default function TVPage({
 
       {/* ── Cast row ── */}
       {castList.length > 0 && (
-        <CastRow cast={castList} max={15} />
+        <CastRow cast={castList} max={15} onSearch={onSearch} />
       )}
 
       {/* ── Similar titles ── */}

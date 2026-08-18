@@ -1,7 +1,7 @@
 # EXEC — Addressable URLs, Player Chrome, and Playback Recovery (Web)
 
 > Companion plan: [PLAN_WEB_ADDRESSABLE_UX.md](../plans/PLAN_WEB_ADDRESSABLE_UX.md)
-> Status: Phases 1–4 complete 2026-08-18.
+> Status: Phases 1–5 complete 2026-08-18.
 
 ## Phase 1 — Addresses, chrome, recovery
 
@@ -215,3 +215,44 @@ the shortcuts modal.
   dead space. The quick-picks column is a deliberate part of the app's visual
   identity and stretches with the hero; rebuilding it is a redesign, not a fix,
   and belongs in a plan of its own.
+
+## Phase 5 — Zero-decision paths
+
+### 5a. The hero's Play button actually played (it did not)
+
+`HeroBanner` passed `{ ...hero, playDirectly: true }` and **nothing consumed
+it**, so the hero's primary CTA landed on the detail page — exactly what its own
+"More Info" button did. Now:
+
+- `MoviePage` opens with `playing` already true when the flag is set. It is an
+  initial state rather than an effect that flips one, and the player's existing
+  render guard still enforces the age rating and release date, so this cannot
+  auto-open restricted or unreleased content.
+- `TVPage` resumes the episode `resumeTarget` resolves (Phase 2). Here it must be
+  an effect: the episode is only known once the season fetch lands.
+
+### 5b. Play Something
+
+A single button between the hero and the rows (teardown §5). It prefers whatever
+is already in flight — resuming beats starting — and otherwise picks at random
+from Continue Watching, Recommended and both trending pools, skipping anything
+already watched. It hands over the same `playDirectly` flag, so it starts
+playback rather than opening another decision screen.
+
+### 5c. Cast and genre chips are queries
+
+Cast names and genre chips on both detail pages now navigate to `/search?q=`,
+which is only possible because search became an addressable destination in
+Phase 4. A fact on a detail page is now a way into the catalogue (teardown §4).
+
+### 5d. Removing from Continue Watching is reversible
+
+`showToast` takes an optional action, and removal offers **Undo** for six seconds
+(a plain notice still clears in 2.5s). The entry, its percentage and its stored
+position are all captured before the delete and restored together, so an
+accidental removal costs one click instead of the position (teardown §1.5).
+
+### Verification (Phase 5)
+
+- `npm run build` passes; 5/5 Playwright smoke tests.
+- ESLint rule-count comparison against HEAD per file: unchanged.

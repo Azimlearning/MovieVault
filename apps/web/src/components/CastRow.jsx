@@ -1,6 +1,6 @@
 const TMDB_IMG_BASE = "https://image.tmdb.org/t/p/w185";
 
-export default function CastRow({ cast = [], max = 12 }) {
+export default function CastRow({ cast = [], max = 12, onSearch }) {
   if (!cast || cast.length === 0) return null;
 
   const shown = cast.slice(0, max);
@@ -10,7 +10,13 @@ export default function CastRow({ cast = [], max = 12 }) {
       <div className="cast-row-title">Cast</div>
       <div className="cast-row">
         {shown.map((person) => (
-          <div key={person.id} className="cast-card">
+          <button
+            key={person.id}
+            type="button"
+            className="cast-card"
+            onClick={() => onSearch?.(person.name)}
+            title={`Search for ${person.name}`}
+          >
             <div className="cast-photo-wrap">
               {person.profile_path ? (
                 <img
@@ -29,7 +35,7 @@ export default function CastRow({ cast = [], max = 12 }) {
             {person.character && (
               <div className="cast-character">{person.character}</div>
             )}
-          </div>
+          </button>
         ))}
       </div>
     </div>

@@ -36,6 +36,15 @@ export const PlayIcon = ({ size = 24, color }) => (
     <polygon points="5 3 19 12 5 21 5 3" />
   </svg>
 );
+export const ShuffleIcon = ({ size = 16 }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M16 3h5v5" />
+    <path d="M4 20 21 3" />
+    <path d="M21 16v5h-5" />
+    <path d="m15 15 6 6" />
+    <path d="M4 4l5 5" />
+  </svg>
+);
 export const FullscreenIcon = ({ size = 22, exit = false }) => (
   <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     {exit ? <>

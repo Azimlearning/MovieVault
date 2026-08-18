@@ -5613,3 +5613,69 @@ html[data-win-titlebar][data-maximized] .main {
         margin-left: 0;
     }
 }
+
+/* ── Play Something ────────────────────────────────────────────────────────
+   Teardown §5: one button that starts something without any browsing. Sits
+   between the hero and the rows so it never competes with the hero's own CTA. */
+.play-something-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 4px 0 22px;
+    flex-wrap: wrap;
+}
+
+.play-something {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.play-something__hint {
+    font-size: 12px;
+    color: var(--text3);
+}
+
+/* Cast and genre chips are queries, so they have to look pressable. */
+.genre-tag--link {
+    cursor: pointer;
+    font: inherit;
+    transition: border-color .15s ease, color .15s ease;
+}
+
+.genre-tag--link:hover {
+    color: var(--text);
+    border-color: var(--accent, #f5a623);
+}
+
+.cast-card {
+    border: 0;
+    background: none;
+    padding: 0;
+    cursor: pointer;
+    text-align: center;
+}
+
+.cast-card:hover .cast-photo,
+.cast-card:focus-visible .cast-photo {
+    outline: 2px solid var(--accent, #f5a623);
+    outline-offset: 2px;
+}
+
+/* Undo lives inside the toast: removing from Continue Watching is reversible
+   (teardown §1.5), so a mis-tap costs one click, not a lost position. */
+.toast-action {
+    margin-left: 14px;
+    border: 0;
+    background: none;
+    color: var(--accent, #f5a623);
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.toast-action:hover {
+    text-decoration: underline;
+}
