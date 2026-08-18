@@ -16,6 +16,10 @@
 
 ## [Unreleased]
 
+### 2026-08-18 — Fix: the recovery pill covered the provider's own controls
+- **Changed:** `.player-trouble` was anchored bottom-left, which put the "Not playing?" pill directly on top of the embedded provider's seek and volume buttons. Moved it to the top edge, horizontally centred and below MovieVault's own chrome row: the bottom of the frame belongs to the provider's transport controls and the top corners to our clusters, so the middle of the top edge is the only strip nothing else owns.
+- **Verification:** Measured against the shipped stylesheet in Chromium — the pill occupies y 59–91 in a 507px frame while the two chrome clusters end at y 45 and y 49, so it overlaps neither and stays clear of the provider's bottom bar.
+
 ### 2026-08-18 — Fix: every TV page crashed on mount (temporal dead zone)
 - **Changed:** `TVPage`'s provider-reachability effect (added in Phase 3) sat above `showFeedback` and `autoSwitchedRef` but named both in its dependency array. Dependency arrays are evaluated during render, so every series page threw `Cannot access '$' before initialization` and hit the error boundary before painting. Moved the effect below both declarations. `MoviePage` was unaffected — there the same effect already sat below its dependencies.
 - **Decided:** The smoke suite only ever mounted a *movie* detail page, which is why this shipped. Added a parameterised regression test that mounts `/tv/...` (two shapes) and `/movie/...` and asserts the error boundary is absent — verified to fail against the broken build and pass against the fix.

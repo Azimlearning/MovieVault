@@ -3937,12 +3937,24 @@ kbd {
 /* ── Playback recovery ─────────────────────────────────────────────────────
    Shown only after a provider has had time to start, and never claims the
    video failed — the parent page cannot see a cross-origin player's state. */
+/* Anchored to the top, centred: the bottom of the frame belongs to the
+   provider's own transport controls — the pill was landing directly on their
+   seek and volume buttons — and the top corners belong to MovieVault's chrome
+   clusters. The middle of the top edge is the only strip owned by nobody. */
 .player-trouble {
     position: absolute;
-    left: 12px;
-    bottom: 12px;
+    top: 58px;
+    left: 50%;
+    transform: translateX(-50%);
     z-index: 25;
     max-width: min(420px, calc(100% - 24px));
+    display: flex;
+    justify-content: center;
+}
+
+/* Collapsed it is a small pill; expanded it needs the room to read. */
+.player-trouble--open {
+    width: min(420px, calc(100% - 24px));
 }
 
 .player-trouble__pill {
@@ -5605,6 +5617,10 @@ html[data-win-titlebar][data-maximized] .main {
 }
 
 @media (max-width: 768px) {
+    .player-trouble {
+        top: 54px;
+    }
+
     .search-page__input {
         font-size: 19px;
     }
