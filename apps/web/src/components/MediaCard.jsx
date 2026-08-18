@@ -20,6 +20,8 @@ const MediaCard = memo(function MediaCard({
   restricted,
   onRemove,
   featured,
+  tasteRating,
+  onSetTasteRating,
 }) {
   const title = item.title || item.name;
   const year = (item.release_date || item.first_air_date || "").slice(0, 4);
@@ -50,7 +52,6 @@ const MediaCard = memo(function MediaCard({
 
   const openMenu = useCallback(
     (e) => {
-      if (!canMarkWatched) return; // no context menu for whole series
       e.preventDefault();
       e.stopPropagation();
       setMenu({ x: e.clientX, y: e.clientY });
@@ -153,6 +154,7 @@ const MediaCard = memo(function MediaCard({
         >
           {isUnreleased ? "SOON" : isAnime ? "ANIME" : isTV ? "TV" : "HD"}
         </span>
+        {tasteRating === "like" && <span className="card-taste-badge" title="You like this">♥</span>}
       </div>
 
       {menu && (
@@ -162,7 +164,7 @@ const MediaCard = memo(function MediaCard({
           style={{ top: menu.y, left: menu.x }}
           onClick={(e) => e.stopPropagation()}
         >
-          {isWatched ? (
+          {canMarkWatched && (isWatched ? (
             <button className="context-menu-item" onClick={handleMarkUnwatched}>
               ↩ Mark as Unwatched
             </button>
@@ -170,6 +172,16 @@ const MediaCard = memo(function MediaCard({
             <button className="context-menu-item" onClick={handleMarkWatched}>
               ✓ Mark as Watched
             </button>
+          ))}
+          {onSetTasteRating && (
+            <>
+              <button className="context-menu-item" onClick={() => { onSetTasteRating(tasteRating === "like" ? null : "like"); setMenu(null); }}>
+                {tasteRating === "like" ? "♥ Remove Like" : "♥ Like this"}
+              </button>
+              <button className="context-menu-item" onClick={() => { onSetTasteRating(tasteRating === "dislike" ? null : "dislike"); setMenu(null); }}>
+                {tasteRating === "dislike" ? "⊘ Remove Not interested" : "⊘ Not interested"}
+              </button>
+            </>
           )}
           {onRemove && (
             <button

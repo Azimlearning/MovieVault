@@ -5,11 +5,13 @@ import HeroQuickPicks from "../components/HeroQuickPicks";
 import GenreBrowser from "../components/GenreBrowser";
 import { tmdbFetch } from "../utils/api";
 import AsyncBoundary from "../components/AsyncBoundary";
+import HomeSkeleton from "../components/HomeSkeleton";
 import HeroBanner from "../components/HeroBanner";
 import { useRatings, getRatingForItem } from "../utils/useRatings";
 import { isRestricted } from "../utils/ageRating";
 import { storage } from "../utils/storage";
 import { loadHomeLayout, loadHomeViewMode } from "../utils/homeLayout";
+import { getTasteRating, getTasteRatings, scoreRecommendation, setTasteRating } from "../utils/taste";
 
 /**
  * Extract up to `count` unique, recently watched items from the user's
@@ -81,6 +83,11 @@ export default function HomePage({
 
   const [recommendedItems, setRecommendedItems] = useState([]);
   const [topRatedItems, setTopRatedItems] = useState([]);
+  const [tasteRatings, setTasteRatings] = useState(() => getTasteRatings());
+
+  const updateTasteRating = useCallback((item, rating) => {
+    setTasteRatings(setTasteRating(item, rating));
+  }, []);
 
   // Load layout config (order + visibility) once on mount
   const [layout] = useState(() => loadHomeLayout());
@@ -186,7 +193,12 @@ export default function HomePage({
           return true;
         });
 
-        setRecommendedItems(deduped.slice(0, 20));
+        setRecommendedItems(
+          deduped
+            .filter((item) => getTasteRating(item, tasteRatings) !== "dislike")
+            .sort((a, b) => scoreRecommendation(b, tasteRatings, history) - scoreRecommendation(a, tasteRatings, history))
+            .slice(0, 20),
+        );
       })
       .catch((e) => {
         if (e.name !== "AbortError")
@@ -195,7 +207,7 @@ export default function HomePage({
 
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiKey, offline, history?.length]);
+  }, [apiKey, offline, history?.length, tasteRatings]);
 
   // Fetch top rated movies + TV, merge and shuffle
   useEffect(() => {
@@ -242,7 +254,7 @@ export default function HomePage({
 
   return (
     <div className="fade-in">
-      <AsyncBoundary state={boundaryState} onRetry={onRetry}>
+      <AsyncBoundary state={boundaryState} onRetry={onRetry} loadingComponent={<HomeSkeleton />}>
         {/* ── Hero cluster: banner + quick-picks ── */}
         {trending.length > 0 && (
           <div className="hero-cluster">
@@ -253,6 +265,8 @@ export default function HomePage({
               onSelect={onSelect}
               onSave={onSave}
               saved={saved}
+              progress={progress}
+              watched={watched}
             />
             <HeroQuickPicks
               items={topRatedItems}
@@ -301,6 +315,8 @@ export default function HomePage({
                       ageRating={r.cert}
                       restricted={restr}
                       onRemove={onRemoveFromContinue}
+                      tasteRating={getTasteRating(item, tasteRatings)}
+                      onSetTasteRating={(rating) => updateTasteRating(item, rating)}
                     />
                   );
                 })}
@@ -343,6 +359,8 @@ export default function HomePage({
                       ageRating={rd.cert}
                       restricted={rd.restricted}
                       featured={idx === 0}
+                      tasteRating={getTasteRating(item, tasteRatings)}
+                      onSetTasteRating={(rating) => updateTasteRating(item, rating)}
                     />
                   );
                 })}

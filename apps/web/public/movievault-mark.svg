@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="MovieVault">
+  <defs>
+    <linearGradient id="g" x1="12" y1="8" x2="52" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffb16d"/>
+      <stop offset=".45" stop-color="#ff7a35"/>
+      <stop offset="1" stop-color="#cc3d16"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="17" fill="#151518"/>
+  <rect x="3" y="3" width="58" height="58" rx="14" fill="none" stroke="#ffffff" stroke-opacity=".12"/>
+  <path fill="url(#g)" d="M14 16a5 5 0 0 1 5-5h26a5 5 0 0 1 5 5v32a5 5 0 0 1-5 5H19a5 5 0 0 1-5-5V16Zm7 1v5h5v-5h-5Zm17 0v5h5v-5h-5ZM21 42v5h5v-5h-5Zm17 0v5h5v-5h-5Z"/>
+  <path fill="#151518" d="M28 25.7c0-1.58 1.7-2.56 3.06-1.76l8.1 4.68a2.03 2.03 0 0 1 0 3.52l-8.1 4.68A2.03 2.03 0 0 1 28 35.06V25.7Z"/>
+</svg>

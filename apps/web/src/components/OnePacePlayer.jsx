@@ -41,6 +41,10 @@ export default function OnePacePlayer({
   const [showControls, setShowControls] = useState(true);
   const [showQualityMenu, setShowQualityMenu] = useState(false);
   const [showSubMenu, setShowSubMenu] = useState(false);
+  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [screenLocked, setScreenLocked] = useState(false);
+  const [unlockArmed, setUnlockArmed] = useState(false);
 
   const [playError, setPlayError] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
@@ -89,6 +93,7 @@ export default function OnePacePlayer({
   }, [episode]);
 
   const handleMouseMove = () => {
+    if (screenLocked) return;
     setShowControls(true);
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     controlsTimeoutRef.current = setTimeout(() => {
@@ -99,7 +104,7 @@ export default function OnePacePlayer({
   useEffect(() => {
     handleMouseMove();
     return () => { if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current); };
-  }, [isPlaying]);
+  }, [isPlaying, screenLocked]);
 
   const handleLoadedMetadata = () => {
     const video = videoRef.current;
@@ -181,6 +186,56 @@ export default function OnePacePlayer({
     }
   };
 
+  const seekBy = (seconds) => {
+    const video = videoRef.current;
+    if (!video || !Number.isFinite(video.duration)) return;
+    video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + seconds));
+    showToast(`${seconds > 0 ? "+" : ""}${seconds}s`);
+  };
+
+  const handleVideoClick = () => {
+    if (screenLocked) return;
+    if (!showControls) {
+      handleMouseMove();
+      return;
+    }
+    togglePlay();
+  };
+
+  const handleDoubleClick = (event) => {
+    if (screenLocked) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    seekBy(event.clientX < rect.left + rect.width / 2 ? -10 : 10);
+  };
+
+  const selectPlaybackRate = (rate) => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.playbackRate = rate;
+    video.preservesPitch = true;
+    setPlaybackRate(rate);
+    setShowSpeedMenu(false);
+    showToast(`${rate}× speed`);
+  };
+
+  const lockScreen = () => {
+    setScreenLocked(true);
+    setUnlockArmed(false);
+    setShowControls(false);
+    showToast("Screen locked. Tap twice to unlock.");
+  };
+
+  const handleUnlock = () => {
+    if (!unlockArmed) {
+      setUnlockArmed(true);
+      showToast("Tap Unlock again to restore controls.");
+      return;
+    }
+    setScreenLocked(false);
+    setUnlockArmed(false);
+    handleMouseMove();
+  };
+
   const handleSeek = (e) => {
     const video = videoRef.current;
     if (!video) return;
@@ -231,8 +286,8 @@ export default function OnePacePlayer({
       if (!video) return;
       switch (e.code) {
         case "Space": e.preventDefault(); togglePlay(); break;
-        case "ArrowRight": e.preventDefault(); video.currentTime = Math.min(video.duration, video.currentTime + 10); showToast("+10s"); break;
-        case "ArrowLeft": e.preventDefault(); video.currentTime = Math.max(0, video.currentTime - 10); showToast("-10s"); break;
+        case "ArrowRight": e.preventDefault(); seekBy(10); break;
+        case "ArrowLeft": e.preventDefault(); seekBy(-10); break;
         case "ArrowUp": {
           e.preventDefault();
           const upVol = Math.min(1, volume + 0.1);
@@ -299,7 +354,7 @@ export default function OnePacePlayer({
   return (
     <div
       ref={containerRef}
-      className={`onepace-player-container ${showControls ? "show-controls" : ""}`}
+      className={`onepace-player-container ${showControls ? "show-controls" : ""}${screenLocked ? " screen-locked" : ""}`}
       onMouseMove={handleMouseMove}
       onTouchStart={handleMouseMove}
       style={{ cursor: showControls ? "default" : "none" }}
@@ -325,8 +380,8 @@ export default function OnePacePlayer({
           onTimeUpdate={handleTimeUpdate}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
-          onClick={togglePlay}
-          onDoubleClick={toggleFullscreen}
+          onClick={handleVideoClick}
+          onDoubleClick={handleDoubleClick}
           autoPlay
           onError={() => setPlayError("Pixeldrain stream error. Try swapping resolution or copy the link.")}
         >
@@ -356,6 +411,17 @@ export default function OnePacePlayer({
 
       {toastMessage && <div className="onepace-toast">{toastMessage}</div>}
 
+      {screenLocked && (
+        <button
+          type="button"
+          className={`onepace-unlock ${unlockArmed ? "armed" : ""}`}
+          onClick={handleUnlock}
+          aria-label={unlockArmed ? "Unlock controls" : "Show unlock controls"}
+        >
+          {unlockArmed ? "Unlock" : "🔒"}
+        </button>
+      )}
+
       {showUpNext && nextEpisode && (
         <div className="onepace-up-next">
           <div className="onepace-up-next-title">Up Next in {upNextCount}s</div>
@@ -378,9 +444,11 @@ export default function OnePacePlayer({
 
           <div className="onepace-controls-row">
             <div className="onepace-controls-group">
+              <button onClick={() => seekBy(-10)} className="onepace-control-btn onepace-seek-btn" title="Back 10 seconds" aria-label="Back 10 seconds">↺10</button>
               <button onClick={togglePlay} className="onepace-control-btn" title={isPlaying ? "Pause" : "Play"}>
                 {isPlaying ? <PauseIcon size={22} /> : <PlayIcon size={22} />}
               </button>
+              <button onClick={() => seekBy(10)} className="onepace-control-btn onepace-seek-btn" title="Forward 10 seconds" aria-label="Forward 10 seconds">10↻</button>
               <div className="onepace-volume-container">
                 <button onClick={toggleMute} className="onepace-control-btn" title={isMuted ? "Unmute" : "Mute"}>
                   {isMuted ? <VolumeMuteIcon size={20} /> : <VolumeIcon size={20} />}
@@ -391,6 +459,11 @@ export default function OnePacePlayer({
             </div>
 
             <div className="onepace-controls-group">
+              {nextEpisode && (
+                <button onClick={handleNextEpisode} className="onepace-control-btn onepace-next-btn" title="Next episode">
+                  Next <span aria-hidden="true">›</span>
+                </button>
+              )}
               {subtitles.length > 0 && (
                 <div className="onepace-dropdown">
                   <button onClick={() => { setShowSubMenu(!showSubMenu); setShowQualityMenu(false); }} className="onepace-control-btn" title="Subtitles">
@@ -421,6 +494,21 @@ export default function OnePacePlayer({
                   )}
                 </div>
               )}
+
+              <div className="onepace-dropdown">
+                <button onClick={() => { setShowSpeedMenu(!showSpeedMenu); setShowSubMenu(false); setShowQualityMenu(false); }} className="onepace-control-btn onepace-speed-btn" title="Playback speed">
+                  {playbackRate}×
+                </button>
+                {showSpeedMenu && (
+                  <div className="onepace-dropdown-menu">
+                    {[0.5, 0.75, 1, 1.25, 1.5].map((rate) => (
+                      <button key={rate} onClick={() => selectPlaybackRate(rate)} className={`onepace-dropdown-item ${playbackRate === rate ? "active" : ""}`}>{rate}×</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button onClick={lockScreen} className="onepace-control-btn" title="Lock screen" aria-label="Lock screen">🔒</button>
 
               <button onClick={toggleFullscreen} className="onepace-control-btn" title="Fullscreen">
                 <MaximizeIcon size={20} />

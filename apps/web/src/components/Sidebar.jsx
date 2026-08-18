@@ -70,21 +70,9 @@ export default function Sidebar({
       {/* ── Header / wordmark ── */}
       <div className="sidebar-header" onClick={() => onNavigate("home")}>
         <div className="sidebar-logo">
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="1" y="1" width="22" height="22" rx="6" fill="#1a1a1a" stroke="#2a2a2a" strokeWidth="0.5" />
-            <circle cx="12" cy="12" r="8.5" fill="#111" stroke="#0c0c0c" strokeWidth="0.6" />
-            <g fill="#1a1a1a">
-              <circle cx="12" cy="4.8" r="1.4" />
-              <circle cx="12" cy="19.2" r="1.4" />
-              <circle cx="4.8" cy="12" r="1.4" />
-              <circle cx="19.2" cy="12" r="1.4" />
-              <circle cx="7.2" cy="7.2" r="1.4" />
-              <circle cx="16.8" cy="16.8" r="1.4" />
-            </g>
-            <circle cx="12" cy="12" r="2.4" fill="#FF8A3D" />
-          </svg>
+          <img src="/movievault-mark.svg" alt="" aria-hidden="true" />
         </div>
-        <span className="sidebar-wordmark">MovieVault</span>
+        <span className="sidebar-wordmark">MOVIE<span>VAULT</span></span>
       </div>
 
       {/* ── Primary nav ── */}

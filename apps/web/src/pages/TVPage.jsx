@@ -8,6 +8,13 @@ import {
   memo,
 } from "react";
 import AsyncBoundary from "../components/AsyncBoundary";
+import PlayerTroubleBar from "../components/PlayerTroubleBar";
+import { canonicaliseTitleSlug } from "../utils/router";
+import {
+  REACHABILITY,
+  pickReachableSource,
+  probeReachable,
+} from "../utils/sourceHealth";
 import { sourceQueue } from "../utils/sourceQueue";
 import {
   EPISODE_GROUP_IDS,
@@ -45,6 +52,7 @@ import {
   SourceIcon,
   ShieldBlockIcon,
   PopOutIcon,
+  FullscreenIcon,
 } from "../components/Icons";
 import CastRow from "../components/CastRow";
 import SimilarRow from "../components/SimilarRow";
@@ -371,6 +379,15 @@ export default function TVPage({
 }) {
   const [details, setDetails] = useState(null);
   const [detailsError, setDetailsError] = useState(null);
+
+  // A deep-linked page starts from a URL stub with no title, so the tab would
+  // stay generic until the user navigated again. Name it once TMDB answers.
+  useEffect(() => {
+    const resolved = details?.name || item?.name || item?.title;
+    if (!resolved) return;
+    document.title = `${resolved} — MovieVault`;
+    canonicaliseTitleSlug(item?.id, resolved);
+  }, [details, item]);
   const [seasonError, setSeasonError] = useState(null);
   const [seasonData, setSeasonData] = useState(null);
   const [failedSeasons, setFailedSeasons] = useState(() => new Set()); // season numbers which give 404 on TMDB
@@ -440,6 +457,7 @@ export default function TVPage({
   );
   const sourceRef = useRef(null);
   const playerWrapRef = useRef(null);
+  const cssFullscreenRef = useRef(false);
   const webviewRef = useRef(null);
   // Always-current refs for interval callbacks, avoids stale closures without restarting the interval
   const saveProgressRef = useRef(saveProgress);
@@ -791,6 +809,68 @@ export default function TVPage({
     [d, selectedSeason, onHistory],
   );
 
+  // Teardown §4 and §14 P0: a state-aware primary CTA. The detail page had no
+  // Play button at all — every session started by hunting through the episode
+  // list. This resolves the episode the user is actually mid-way through, or
+  // else the first one they have not watched in this season.
+  const resumeTarget = useMemo(() => {
+    const episodes = currentSeasonEpisodes || [];
+    if (!episodes.length) return null;
+    const keyFor = (ep) =>
+      `tv_${item.id}_s${selectedSeason}e${ep.episode_number}`;
+
+    const midway = episodes.find((ep) => {
+      const key = keyFor(ep);
+      const pct = progress?.[key] || 0;
+      return pct >= 5 && pct < 90 && !watched?.[key];
+    });
+    if (midway) return { ep: midway, resuming: true };
+
+    const nextUp = episodes.find((ep) => !watched?.[keyFor(ep)]);
+    return nextUp ? { ep: nextUp, resuming: false } : null;
+  }, [currentSeasonEpisodes, item.id, selectedSeason, progress, watched]);
+
+  useEffect(() => {
+    if (!playing || autoSwitchedRef.current || isAsync || !playerEp) {
+      return undefined;
+    }
+    let active = true;
+    const buildUrl = (id) =>
+      getSourceUrl(id, "tv", item.id, playerEp.season, playerEp.episode);
+
+    probeReachable(buildUrl(playerSource)).then(async (result) => {
+      if (!active || result !== REACHABILITY.BLOCKED) return;
+      const alternatives = PLAYER_SOURCES.filter(
+        (src) => src.id !== playerSource && !src.async,
+      ).map((src) => src.id);
+      const next = await pickReachableSource(alternatives, buildUrl);
+      if (!active || !next) return;
+
+      autoSwitchedRef.current = true;
+      const blockedLabel =
+        PLAYER_SOURCES.find((src) => src.id === playerSource)?.label ?? "Source";
+      const nextLabel =
+        PLAYER_SOURCES.find((src) => src.id === next)?.label ?? next;
+      showFeedback(`${blockedLabel} is blocked here — switched to ${nextLabel}`);
+
+      setFailoverQueue([next]);
+      setCurrentQueueIndex(0);
+      setPlayerSource(next);
+      setFailoverError(false);
+      setWebviewLoading(true);
+      storage.set("playerSource", next);
+      setM3u8Url(null);
+      setInterceptedSubs([]);
+      setResolvedPlayerUrl(null);
+      setResolvingUrl(false);
+      setResolveError(null);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [playing, playerSource, item.id, playerEp, isAsync, showFeedback]);
+
   const handleManualSkip = useCallback(async () => {
     if (!skipPrompt || !skipTimings?.[skipPrompt]) return;
     const rawEnd = skipTimings[skipPrompt].endTime;
@@ -847,6 +927,51 @@ export default function TVPage({
     setFeedbackText(text);
     feedbackTimerRef.current = setTimeout(() => setFeedbackText(null), 2000);
   }, []);
+
+  // A provider blocked at the network level — DNS filter, ad blocker, VPN, or a
+  // mobile carrier — loads an error page that fires the iframe's `load` event
+  // like a success would. Probing once per series lets us move to a provider the
+  // user's network actually allows, instead of leaving them on a black frame.
+  const autoSwitchedRef = useRef(false);
+  useEffect(() => {
+    autoSwitchedRef.current = false;
+  }, [item.id]);
+
+  // The app-owned control has a direct user gesture, unlike controls inside a
+  // cross-origin video frame, so browser fullscreen is reliable on Vercel.
+  const togglePlayerFullscreen = useCallback(async () => {
+    const container = playerWrapRef.current;
+    const isFullscreen = Boolean(document.fullscreenElement) || playerFullscreen;
+    if (isFullscreen) {
+      cssFullscreenRef.current = false;
+      try {
+        if (document.fullscreenElement) await document.exitFullscreen();
+      } catch {}
+      setPlayerFullscreen(false);
+      document.documentElement.removeAttribute("data-player-fullscreen");
+      return;
+    }
+    try {
+      if (container?.requestFullscreen) await container.requestFullscreen();
+    } catch {}
+    cssFullscreenRef.current = !document.fullscreenElement;
+    setPlayerFullscreen(true);
+    document.documentElement.setAttribute("data-player-fullscreen", "1");
+  }, [playerFullscreen]);
+
+  useEffect(() => {
+    const syncFullscreenState = () => {
+      if (document.fullscreenElement === playerWrapRef.current) {
+        setPlayerFullscreen(true);
+        document.documentElement.setAttribute("data-player-fullscreen", "1");
+      } else if (document.fullscreenElement === null && playerFullscreen && !cssFullscreenRef.current) {
+        setPlayerFullscreen(false);
+        document.documentElement.removeAttribute("data-player-fullscreen");
+      }
+    };
+    document.addEventListener("fullscreenchange", syncFullscreenState);
+    return () => document.removeEventListener("fullscreenchange", syncFullscreenState);
+  }, [playerFullscreen]);
 
   const changeSubtitleOffset = useCallback((delta) => {
     setSubtitleOffset((prev) => {
@@ -1103,15 +1228,7 @@ export default function TVPage({
     // Fullscreen: F
     if (keyL === "f") {
       if (preventDefault) preventDefault();
-      setPlayerFullscreen((prev) => {
-        const next = !prev;
-        if (next) {
-          document.documentElement.setAttribute("data-player-fullscreen", "1");
-        } else {
-          document.documentElement.removeAttribute("data-player-fullscreen");
-        }
-        return next;
-      });
+      togglePlayerFullscreen();
       return;
     }
 
@@ -1174,7 +1291,7 @@ export default function TVPage({
       handleManualSkip();
       return;
     }
-  }, [onBack, changeSubtitleOffset, showFeedback, selectedEp, currentSeasonEpisodes, playEpisode, handleManualSkip]);
+  }, [onBack, changeSubtitleOffset, showFeedback, selectedEp, currentSeasonEpisodes, playEpisode, handleManualSkip, togglePlayerFullscreen]);
 
   const fetchDetails = useCallback(() => {
     let mounted = true;
@@ -2228,6 +2345,16 @@ export default function TVPage({
                   </div>
                 )}
                 <div className="detail-actions">
+                  {!restricted && resumeTarget && (
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => playEpisode(resumeTarget.ep)}
+                    >
+                      <PlayIcon />
+                      {resumeTarget.resuming ? "Resume" : "Play"} S
+                      {selectedSeason}:E{resumeTarget.ep.episode_number}
+                    </button>
+                  )}
                   {trailerKey &&
                     (restricted ? (
                       <button
@@ -2466,7 +2593,7 @@ export default function TVPage({
                           : resolvedPlayerUrl || "about:blank"
                       }
                       sandbox={sourceSandbox(playerSource) || undefined}
-                      allow="fullscreen; autoplay; encrypted-media; picture-in-picture"
+                      allow="fullscreen *; autoplay *; encrypted-media *; picture-in-picture *"
                       allowFullScreen
                       onLoad={handleIframeLoad}
                       style={{
@@ -2502,7 +2629,7 @@ export default function TVPage({
                           )
                     }
                     sandbox={sourceSandbox(playerSource) || undefined}
-                    allow="fullscreen; autoplay; encrypted-media; picture-in-picture"
+                    allow="fullscreen *; autoplay *; encrypted-media *; picture-in-picture *"
                     allowFullScreen
                     onLoad={handleIframeLoad}
                     style={{
@@ -2653,6 +2780,12 @@ export default function TVPage({
                     ))}
                   </div>
                 )}
+                {/* Right-hand cluster of MovieVault's own controls. These sit
+                    outside the provider's UI on purpose: a click inside the embed
+                    can open an ad tab, so anything the user needs to be able to
+                    click safely lives here. Grouped rather than absolutely
+                    positioned, so the buttons cannot land on top of each other. */}
+                <div className="player-overlay-group player-overlay-group--right">
                 <button
                   className="player-overlay-btn"
                   onClick={() =>
@@ -2695,6 +2828,55 @@ export default function TVPage({
                     </span>
                   )}
                 </button>
+                  <button
+                    type="button"
+                    className="player-fullscreen-button"
+                    onClick={togglePlayerFullscreen}
+                    title={
+                      playerFullscreen ? "Exit fullscreen (F)" : "Fullscreen (F)"
+                    }
+                    aria-label={
+                      playerFullscreen ? "Exit fullscreen" : "Enter fullscreen"
+                    }
+                  >
+                    <FullscreenIcon exit={playerFullscreen} />
+                  </button>
+                </div>
+                <PlayerTroubleBar
+                  key={`${playerSource}-s${playerEp.season}e${playerEp.episode}`}
+                  sourceLabel={
+                    PLAYER_SOURCES.find((src) => src.id === playerSource)?.label
+                  }
+                  url={
+                    isAsync
+                      ? resolvedPlayerUrl
+                      : getSourceUrl(
+                          playerSource,
+                          "tv",
+                          item.id,
+                          playerEp.season,
+                          playerEp.episode,
+                        )
+                  }
+                  onTryNext={() => {
+                    const ids = PLAYER_SOURCES.map((src) => src.id);
+                    const next =
+                      ids[(ids.indexOf(playerSource) + 1) % ids.length];
+                    if (!next || next === playerSource) return;
+                    setShowSourceMenu(false);
+                    setFailoverQueue([next]);
+                    setCurrentQueueIndex(0);
+                    setPlayerSource(next);
+                    setFailoverError(false);
+                    setWebviewLoading(true);
+                    storage.set("playerSource", next);
+                    setM3u8Url(null);
+                    setInterceptedSubs([]);
+                    setResolvedPlayerUrl(null);
+                    setResolvingUrl(false);
+                    setResolveError(null);
+                  }}
+                />
 
                 {/* Skip controls are injected directly into the webview DOM*/}
 

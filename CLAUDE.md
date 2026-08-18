@@ -61,6 +61,9 @@ This repo contains two distinct apps that **do not share source code**:
 
 ```
 refdocs/
+  research/
+    README.md               ← Product/technical research index
+    STREAMING_UX_TEARDOWN.md ← Streaming UX research reference
   changelog/
     CHANGELOG.md          ← MANDATORY AI session log (update every session)
     DECISIONS.md          ← Architectural decisions (ADRs) — read before re-debating settled choices

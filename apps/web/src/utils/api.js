@@ -473,7 +473,10 @@ export const isAnimeContent = (item, details) => {
   return hasAnimation && (lang === "ja" || countries.includes("JP"));
 };
 
-// Default sources
+// Default sources. The current third-party providers reject a sandboxed frame,
+// so the working default is unsandboxed. Pop-up Shield remains available as an
+// explicit preference, with the known compatibility trade-off documented in
+// ADR-013 and ADR-016.
 export const ANIME_DEFAULT_SOURCE = "allmanga";
 export const NON_ANIME_DEFAULT_SOURCE = "videasy";
 

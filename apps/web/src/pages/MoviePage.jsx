@@ -8,6 +8,13 @@ import {
   useMemo,
 } from "react";
 import AsyncBoundary from "../components/AsyncBoundary";
+import PlayerTroubleBar from "../components/PlayerTroubleBar";
+import { canonicaliseTitleSlug } from "../utils/router";
+import {
+  REACHABILITY,
+  pickReachableSource,
+  probeReachable,
+} from "../utils/sourceHealth";
 import { sourceQueue } from "../utils/sourceQueue";
 import {
   tmdbFetch,
@@ -38,6 +45,7 @@ import {
   SourceIcon,
   ShieldBlockIcon,
   PopOutIcon,
+  FullscreenIcon,
 } from "../components/Icons";
 import DownloadModal from "../components/DownloadModal";
 import TrailerModal from "../components/TrailerModal";
@@ -76,7 +84,20 @@ export default function MoviePage({
   const [details, setDetails] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState(null);
+
+  // A deep-linked page starts from a URL stub with no title, so the tab would
+  // stay generic until the user navigated again. Name it once TMDB answers.
+  useEffect(() => {
+    const resolved = details?.title || item?.title;
+    if (!resolved) return;
+    document.title = `${resolved} — MovieVault`;
+    canonicaliseTitleSlug(item?.id, resolved);
+  }, [details, item]);
   const [playing, setPlaying] = useState(false);
+  // Teardown §6.5: the end of a film is the start of the next decision. An
+  // embedded provider never tells us it finished, so this is raised by the only
+  // completion signal the web build actually has — the user marking 100%.
+  const [postPlay, setPostPlay] = useState(false);
   const [showDownload, setShowDownload] = useState(false);
   const [trailerKey, setTrailerKey] = useState(null);
   const [showTrailer, setShowTrailer] = useState(false);
@@ -97,6 +118,7 @@ export default function MoviePage({
   const [menuPos, setMenuPos] = useState(null);
   const sourceRef = useRef(null);
   const playerWrapRef = useRef(null);
+  const cssFullscreenRef = useRef(false);
   const webviewRef = useRef(null);
   // Always-current refs for interval callbacks, avoids stale closures without restarting the interval
   const saveProgressRef = useRef(saveProgress);
@@ -156,7 +178,8 @@ export default function MoviePage({
     [item.id, details],
   );
 
-  const { watchedSecs, totalSecs, displayPct, progressLabel } = useMemo(() => {
+  const { watchedSecs, totalSecs, displayPct, progressLabel, remainingLabel } =
+    useMemo(() => {
     const watchedSecs = storage.get("dlTime_" + progressKey) || 0;
     const totalSecs = d?.runtime ? d.runtime * 60 : 0;
     const derivedPct =
@@ -180,8 +203,42 @@ export default function MoviePage({
           : displayPct > 0
             ? `${displayPct}%`
             : null;
-    return { watchedSecs, totalSecs, displayPct, progressLabel };
+    const remainingSecs =
+      totalSecs > 0
+        ? Math.max(
+            0,
+            totalSecs -
+              (watchedSecs > 0 ? watchedSecs : (displayPct / 100) * totalSecs),
+          )
+        : 0;
+    const remainingLabel =
+      remainingSecs >= 3600
+        ? `${Math.floor(remainingSecs / 3600)}h ${Math.round(
+            (remainingSecs % 3600) / 60,
+          )}m left`
+        : remainingSecs >= 60
+          ? `${Math.round(remainingSecs / 60)}m left`
+          : null;
+    return {
+      watchedSecs,
+      totalSecs,
+      displayPct,
+      progressLabel,
+      remainingLabel,
+    };
   }, [progressKey, pct, d?.runtime]);
+
+  // Teardown §4: the primary CTA says where the user actually is, so nobody has
+  // to remember whether they finished this or stopped twenty minutes in.
+  const playLabel = playing
+    ? "Restart"
+    : isWatched
+      ? "Watch again"
+      : displayPct > 0
+        ? remainingLabel
+          ? `Resume · ${remainingLabel}`
+          : "Resume"
+        : "Play";
 
   const [watchedThreshold] = useState(
     () => storage.get("watchedThreshold") ?? 20,
@@ -204,6 +261,97 @@ export default function MoviePage({
     setFeedbackText(text);
     feedbackTimerRef.current = setTimeout(() => setFeedbackText(null), 2000);
   }, []);
+
+  // A provider blocked at the network level — DNS filter, ad blocker, VPN, or a
+  // mobile carrier — loads an error page that fires the iframe's `load` event
+  // like a success would. Probing once per play lets us move to a provider the
+  // user's network actually allows, instead of leaving them on a black frame.
+  const autoSwitchedRef = useRef(false);
+  useEffect(() => {
+    autoSwitchedRef.current = false;
+  }, [item.id]);
+
+  useEffect(() => {
+    if (!playing || autoSwitchedRef.current || sourceIsAsync(playerSource)) {
+      return undefined;
+    }
+    let active = true;
+    const buildUrl = (id) => getSourceUrl(id, "movie", item.id, null, null);
+
+    probeReachable(buildUrl(playerSource)).then(async (result) => {
+      if (!active || result !== REACHABILITY.BLOCKED) return;
+      const alternatives = PLAYER_SOURCES.filter(
+        (src) => src.id !== playerSource && !src.async,
+      ).map((src) => src.id);
+      const next = await pickReachableSource(alternatives, buildUrl);
+      if (!active || !next) return;
+
+      autoSwitchedRef.current = true;
+      const blockedLabel =
+        PLAYER_SOURCES.find((src) => src.id === playerSource)?.label ?? "Source";
+      const nextLabel =
+        PLAYER_SOURCES.find((src) => src.id === next)?.label ?? next;
+      showFeedback(`${blockedLabel} is blocked here — switched to ${nextLabel}`);
+
+      setFailoverQueue([next]);
+      setCurrentQueueIndex(0);
+      setPlayerSource(next);
+      setFailoverError(false);
+      setWebviewLoading(true);
+      storage.set("playerSource", next);
+      setM3u8Url(null);
+      setInterceptedSubs([]);
+      setResolvedPlayerUrl(null);
+      setResolvingUrl(false);
+      setResolveError(null);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [playing, playerSource, item.id, showFeedback]);
+
+  // Use the browser Fullscreen API when available, with the CSS fullscreen
+  // layout as a fallback for browsers/embedded contexts that reject it.
+  const togglePlayerFullscreen = useCallback(async () => {
+    const container = playerWrapRef.current;
+    const isFullscreen = Boolean(document.fullscreenElement) || playerFullscreen;
+
+    if (isFullscreen) {
+      cssFullscreenRef.current = false;
+      try {
+        if (document.fullscreenElement) await document.exitFullscreen();
+      } catch {}
+      setPlayerFullscreen(false);
+      document.documentElement.removeAttribute("data-player-fullscreen");
+      return;
+    }
+
+    try {
+      if (container?.requestFullscreen) {
+        await container.requestFullscreen();
+      }
+    } catch {}
+
+    // Keep the app-level layout working even when the API is unavailable.
+    cssFullscreenRef.current = !document.fullscreenElement;
+    setPlayerFullscreen(true);
+    document.documentElement.setAttribute("data-player-fullscreen", "1");
+  }, [playerFullscreen]);
+
+  useEffect(() => {
+    const syncFullscreenState = () => {
+      if (document.fullscreenElement === playerWrapRef.current) {
+        setPlayerFullscreen(true);
+        document.documentElement.setAttribute("data-player-fullscreen", "1");
+      } else if (document.fullscreenElement === null && playerFullscreen && !cssFullscreenRef.current) {
+        setPlayerFullscreen(false);
+        document.documentElement.removeAttribute("data-player-fullscreen");
+      }
+    };
+    document.addEventListener("fullscreenchange", syncFullscreenState);
+    return () => document.removeEventListener("fullscreenchange", syncFullscreenState);
+  }, [playerFullscreen]);
 
   const changeSubtitleOffset = useCallback((delta) => {
     setSubtitleOffset((prev) => {
@@ -411,15 +559,7 @@ export default function MoviePage({
     // Fullscreen: F
     if (keyL === "f") {
       if (preventDefault) preventDefault();
-      setPlayerFullscreen((prev) => {
-        const next = !prev;
-        if (next) {
-          document.documentElement.setAttribute("data-player-fullscreen", "1");
-        } else {
-          document.documentElement.removeAttribute("data-player-fullscreen");
-        }
-        return next;
-      });
+      togglePlayerFullscreen();
       return;
     }
 
@@ -451,7 +591,7 @@ export default function MoviePage({
       changeSubtitleOffset(delta);
       return;
     }
-  }, [onBack, changeSubtitleOffset, showFeedback]);
+  }, [onBack, changeSubtitleOffset, showFeedback, togglePlayerFullscreen]);
 
   // Load saved subtitle offset when starting playback
   useEffect(() => {
@@ -1266,7 +1406,7 @@ export default function MoviePage({
                 </button>
               ) : (
                 <button className="btn btn-primary" onClick={handlePlay}>
-                  <PlayIcon /> {playing ? "Restart" : "Play"}
+                  <PlayIcon /> {playLabel}
                 </button>
               )}
               {trailerKey &&
@@ -1503,7 +1643,7 @@ export default function MoviePage({
                       : resolvedPlayerUrl || "about:blank"
                   }
                   sandbox={sourceSandbox(playerSource) || undefined}
-                  allow="fullscreen; autoplay; encrypted-media; picture-in-picture"
+                  allow="fullscreen *; autoplay *; encrypted-media *; picture-in-picture *"
                   allowFullScreen
                   onLoad={handleIframeLoad}
                   style={{
@@ -1529,7 +1669,7 @@ export default function MoviePage({
                     : getSourceUrl(playerSource, "movie", item.id, null, null)
                 }
                 sandbox={sourceSandbox(playerSource) || undefined}
-                allow="fullscreen; autoplay; encrypted-media; picture-in-picture"
+                allow="fullscreen *; autoplay *; encrypted-media *; picture-in-picture *"
                 onLoad={handleIframeLoad}
                 allowFullScreen
                 style={{
@@ -1662,6 +1802,12 @@ export default function MoviePage({
                 ))}
               </div>
             )}
+            {/* Right-hand cluster of MovieVault's own controls. These sit outside
+                the provider's UI on purpose: a click inside the embed can open an
+                ad tab, so anything the user needs to be able to click safely lives
+                here. Grouped rather than absolutely positioned, so the buttons
+                cannot land on top of each other. */}
+            <div className="player-overlay-group player-overlay-group--right">
             <button
               className="player-overlay-btn"
               onClick={() =>
@@ -1704,6 +1850,84 @@ export default function MoviePage({
                 </span>
               )}
             </button>
+              <button
+                type="button"
+                className="player-fullscreen-button"
+                onClick={togglePlayerFullscreen}
+                title={playerFullscreen ? "Exit fullscreen (F)" : "Fullscreen (F)"}
+                aria-label={
+                  playerFullscreen ? "Exit fullscreen" : "Enter fullscreen"
+                }
+              >
+                <FullscreenIcon exit={playerFullscreen} />
+              </button>
+            </div>
+            <PlayerTroubleBar
+              key={playerSource}
+              sourceLabel={
+                PLAYER_SOURCES.find((s) => s.id === playerSource)?.label
+              }
+              url={
+                sourceIsAsync(playerSource)
+                  ? resolvedPlayerUrl
+                  : getSourceUrl(playerSource, "movie", item.id, null, null)
+              }
+              onTryNext={() => {
+                const ids = PLAYER_SOURCES.map((src) => src.id);
+                const next =
+                  ids[(ids.indexOf(playerSource) + 1) % ids.length];
+                if (!next || next === playerSource) return;
+                  setShowSourceMenu(false);
+                  setFailoverQueue([next]);
+                  setCurrentQueueIndex(0);
+                  setPlayerSource(next);
+                  setFailoverError(false);
+                  setWebviewLoading(true);
+                  storage.set("playerSource", next);
+                  setM3u8Url(null);
+                  setInterceptedSubs([]);
+                  setResolvedPlayerUrl(null);
+                  setResolvingUrl(false);
+                  setResolveError(null);
+              }}
+            />
+            {postPlay && similarList.length > 0 && (
+              <div className="post-play">
+                <div className="post-play__card">
+                  <p className="post-play__eyebrow">Finished {title}</p>
+                  <h3 className="post-play__title">More like this</h3>
+                  <div className="post-play__row">
+                    {similarList.slice(0, 3).map((rec) => (
+                      <button
+                        key={rec.id}
+                        type="button"
+                        className="post-play__item"
+                        onClick={() => {
+                          setPostPlay(false);
+                          onSelect?.({ ...rec, media_type: "movie" });
+                        }}
+                      >
+                        {imgUrl(rec.poster_path, "w185") && (
+                          <img
+                            src={imgUrl(rec.poster_path, "w185")}
+                            alt=""
+                            loading="lazy"
+                          />
+                        )}
+                        <span>{rec.title || rec.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    className="post-play__dismiss"
+                    onClick={() => setPostPlay(false)}
+                  >
+                    Not now
+                  </button>
+                </div>
+              </div>
+            )}
             {feedbackText && (
               <div className="player-feedback-overlay">
                 {feedbackText}
@@ -1735,7 +1959,10 @@ export default function MoviePage({
                 key={p}
                 className="btn btn-ghost"
                 style={{ padding: "5px 14px", fontSize: 12 }}
-                onClick={() => saveProgress(progressKey, p)}
+                onClick={() => {
+                  saveProgress(progressKey, p);
+                  if (p === 100) setPostPlay(true);
+                }}
               >
                 {p}%
               </button>

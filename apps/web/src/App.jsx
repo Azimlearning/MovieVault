@@ -34,6 +34,13 @@ const OnePacePage = lazy(() => import("./pages/OnePacePage"));
 const OnePaceArcPage = lazy(() => import("./pages/OnePaceArcPage"));
 const OnePacePlayer = lazy(() => import("./components/OnePacePlayer"));
 import { checkForUpdates } from "./utils/updates";
+import { currentPathState, stateToPath } from "./utils/router";
+
+// The address bar carries the shareable identity of a screen. This map carries
+// the fully-hydrated `selected` object for entries created during this session,
+// so browser Back restores the exact object instead of a re-fetch stub.
+const ROUTE_OBJECTS = new Map();
+const INITIAL_ROUTE = currentPathState();
 
 const handleIntegrationsSync = (entry, pct) => {
   // 1. Discord RPC
@@ -100,8 +107,10 @@ export default function App() {
   const [apiKeyLoaded, setApiKeyLoaded] = useState(false);
   const [skipped, setSkipped] = useState(false);
   const [apiKeyStatus, setApiKeyStatus] = useState("checking"); // 'checking' | 'ok' | 'invalid_token' | 'unreachable'
-  const [page, setPage] = useState(() => storage.get("startPage") || "home");
-  const [selected, setSelected] = useState(null);
+  const [page, setPage] = useState(
+    () => INITIAL_ROUTE?.page || storage.get("startPage") || "home",
+  );
+  const [selected, setSelected] = useState(() => INITIAL_ROUTE?.selected ?? null);
   const [showSearch, setShowSearch] = useState(false);
   const [dlSearchOpen, setDlSearchOpen] = useState(false);
   const [librarySort, setLibrarySort] = useState(
@@ -110,8 +119,10 @@ export default function App() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [platform, setPlatform] = useState(null);
 
-  // Navigation history stack for Ctrl+Z back navigation
-  const [navStack, setNavStack] = useState([]);
+  // Browser history is the navigation stack: Back/Forward, deep links and
+  // shared URLs all travel the same path. `navDepth` exists only so the sidebar
+  // can tell whether this session has anywhere to go back to.
+  const [navDepth, setNavDepth] = useState(0);
 
   const [saved, setSaved] = useState(() => storage.get("saved") || {});
   // Separate order array for drag-and-drop reordering
@@ -662,30 +673,65 @@ export default function App() {
   }, [page, selected]);
 
   const navigateBack = useCallback(() => {
-    setNavStack((prev) => {
-      if (prev.length === 0) return prev;
-      const last = prev[prev.length - 1];
-      setPage(last.page);
-      setSelected(last.selected);
-      if (typeof gc === "function") {
-        requestIdleCallback(() => gc(), { timeout: 2000 });
-      }
-      return prev.slice(0, -1);
-    });
+    window.history.back();
   }, []);
 
   const navigate = useCallback((pg, data = null) => {
-    setNavStack((prev) => [
-      ...prev,
-      { page: pageRef.current, selected: selectedRef.current },
-    ]);
     setSelected(data);
     setPage(pg);
     setShowSearch(false);
+
+    const path = stateToPath(pg, data);
+    const nextIdx = (window.history.state?.mvIdx ?? 0) + 1;
+    ROUTE_OBJECTS.set(nextIdx, { page: pg, selected: data });
+    window.history.pushState(
+      { mvIdx: nextIdx },
+      "",
+      path || window.location.pathname + window.location.search,
+    );
+    setNavDepth(nextIdx);
+
     // After navigating away, the previous page's component unmounts
     if (typeof gc === "function") {
       requestIdleCallback(() => gc(), { timeout: 2000 });
     }
+  }, []);
+
+  // Stamp the entry the app started on, so Back from the first navigation has
+  // a state object to return to rather than leaving the site.
+  useEffect(() => {
+    if (window.history.state?.mvIdx == null) {
+      // A recognised address is already correct for the state it produced, and
+      // rewriting it would strip the title slug a shared link carried. Only an
+      // address that mapped to nothing gets replaced with the screen shown.
+      const path = INITIAL_ROUTE
+        ? undefined
+        : stateToPath(pageRef.current, selectedRef.current) || undefined;
+      window.history.replaceState({ mvIdx: 0 }, "", path);
+    }
+    ROUTE_OBJECTS.set(window.history.state?.mvIdx ?? 0, {
+      page: pageRef.current,
+      selected: selectedRef.current,
+    });
+  }, []);
+
+  // Back/Forward, including a swipe-back gesture on mobile.
+  useEffect(() => {
+    const handlePopState = (event) => {
+      const idx = event.state?.mvIdx ?? 0;
+      setNavDepth(idx);
+      const restored =
+        ROUTE_OBJECTS.get(idx) ||
+        currentPathState() || {
+          page: storage.get("startPage") || "home",
+          selected: null,
+        };
+      setPage(restored.page);
+      setSelected(restored.selected);
+      setShowSearch(false);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
@@ -1048,7 +1094,7 @@ export default function App() {
           activeDownloads={activeDownloadCount}
           onReorderSaved={handleReorderSaved}
           onRemoveSaved={toggleSave}
-          canGoBack={navStack.length > 0}
+          canGoBack={navDepth > 0}
           onBack={navigateBack}
           onShowShortcuts={() => setShowShortcuts(true)}
         />

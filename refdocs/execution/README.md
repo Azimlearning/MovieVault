@@ -23,3 +23,5 @@
 | [EXEC_UI_REDESIGN_V3.md](EXEC_UI_REDESIGN_V3.md) | PLAN_UI_REDESIGN_V3.md | Not started |
 | [EXEC_WEB_V3_POLISH.md](EXEC_WEB_V3_POLISH.md) | PLAN_WEB_V3_POLISH.md | Phases 0–5 done (device/relay tests + skeletons open) |
 | [EXEC_NATIVE_PLAYER.md](EXEC_NATIVE_PLAYER.md) | PLAN_NATIVE_PLAYER.md | Phase 0 spike done — NO-GO (0/20); Phases 1–4 blocked |
+| [EXEC_WEB_PLAYBACK_RELIABILITY.md](EXEC_WEB_PLAYBACK_RELIABILITY.md) | PLAN_WEB_PLAYBACK_RELIABILITY.md | Baseline complete; real-provider/device verification open |
+| [EXEC_WEB_ADDRESSABLE_UX.md](EXEC_WEB_ADDRESSABLE_UX.md) | PLAN_WEB_ADDRESSABLE_UX.md | Phases 1–3 complete |

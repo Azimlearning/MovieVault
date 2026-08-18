@@ -36,6 +36,21 @@ export const PlayIcon = ({ size = 24, color }) => (
     <polygon points="5 3 19 12 5 21 5 3" />
   </svg>
 );
+export const FullscreenIcon = ({ size = 22, exit = false }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {exit ? <>
+      <path d="M9 3v6H3" /><path d="m3 3 6 6" />
+      <path d="M15 21v-6h6" /><path d="m21 21-6-6" />
+      <path d="M21 9h-6V3" /><path d="m15 9 6-6" />
+      <path d="M3 15h6v6" /><path d="m9 15-6 6" />
+    </> : <>
+      <path d="M8 3H3v5" /><path d="m3 3 6 6" />
+      <path d="M16 3h5v5" /><path d="m21 3-6 6" />
+      <path d="M3 16v5h5" /><path d="m3 21 6-6" />
+      <path d="M21 16v5h-5" /><path d="m21 21-6-6" />
+    </>}
+  </svg>
+);
 export const CloseIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <line x1="18" y1="6" x2="6" y2="18" />

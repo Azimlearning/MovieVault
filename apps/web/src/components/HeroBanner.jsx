@@ -29,7 +29,28 @@ export default function HeroBanner({
   onSelect,
   onSave,
   saved = [],
+  progress = {},
+  watched = {},
 }) {
+  // Teardown §14 P0: the hero CTA states where the user is with this title
+  // rather than always promising a fresh start.
+  const heroProgressLabel = (item, progressMap, watchedMap) => {
+    if (!item?.id) return "Play";
+    const key =
+      (item.media_type || "movie") === "movie" ? `movie_${item.id}` : null;
+    if (!key) {
+      // A series' progress lives per episode, so any tracked episode counts.
+      const prefix = `tv_${item.id}_s`;
+      const started = Object.keys(progressMap || {}).some(
+        (k) => k.startsWith(prefix) && (progressMap[k] || 0) >= 5,
+      );
+      return started ? "Resume" : "Play";
+    }
+    if (watchedMap?.[key]) return "Watch again";
+    const pct = progressMap?.[key] || 0;
+    return pct >= 5 && pct < 90 ? "Resume" : "Play";
+  };
+
   const heroPool = useMemo(() => {
     const movies = trending.slice(0, 3).map((i) => ({ ...i, media_type: "movie" }));
     const tvs = trendingTV.slice(0, 2).map((i) => ({ ...i, media_type: "tv" }));
@@ -213,6 +234,7 @@ export default function HeroBanner({
   if (!hero) return null;
 
   const title = hero.title || hero.name || "";
+  const heroPlayLabel = heroProgressLabel(hero, progress, watched);
   const year = (hero.release_date || hero.first_air_date || "").slice(0, 4);
   const rating = hero.vote_average?.toFixed(1);
   const typeLabel = hero.media_type === "tv" ? "Trending · Series" : "Trending · Movie";
@@ -278,9 +300,9 @@ export default function HeroBanner({
           <button
             className="btn btn-primary"
             onClick={() => onSelect({ ...hero, playDirectly: true })}
-            aria-label={`Play ${title}`}
+            aria-label={`${heroPlayLabel} ${title}`}
           >
-            <PlayIcon /> Play
+            <PlayIcon /> {heroPlayLabel}
           </button>
 
           <button

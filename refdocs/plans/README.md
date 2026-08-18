@@ -22,3 +22,5 @@
 | [PLAN_UI_REDESIGN_V3.md](PLAN_UI_REDESIGN_V3.md) | V3 — full visual redesign (new palette, Bento cards, new app icon) | Draft |
 | [PLAN_WEB_V3_POLISH.md](PLAN_WEB_V3_POLISH.md) | Web app mobile fixes + One Pace & Watch Party V3 redesign/testing | Phases 0–5 done |
 | [PLAN_NATIVE_PLAYER.md](PLAN_NATIVE_PLAYER.md) | Ad-free native player via client-side stream extraction (P-Stream-style) | On hold — Phase 0 spike NO-GO (0/20; public libs dead) |
+| [PLAN_WEB_PLAYBACK_RELIABILITY.md](PLAN_WEB_PLAYBACK_RELIABILITY.md) | Protected-first source selection, playback recovery, and web branding | Baseline implemented; provider/device verification open |
+| [PLAN_WEB_ADDRESSABLE_UX.md](PLAN_WEB_ADDRESSABLE_UX.md) | Real URLs/deep links, unified player chrome, playback recovery, state-aware CTAs | Phases 1–3 done |

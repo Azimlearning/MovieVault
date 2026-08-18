@@ -7,17 +7,18 @@ export const sourceQueue = {
   getPriorityOrder() {
     const custom = storage.get("sourcePriority");
     if (Array.isArray(custom) && custom.length > 0) {
-      const order = custom.filter((s) => s !== "videasy");
-      return ["videasy", ...order];
+      // Preserve the user's ordering, while avoiding duplicate or stale IDs.
+      return [...new Set(custom.filter((s) => ["vidsrc", "2embed", "videasy"].includes(s)))];
     }
-    // Default priority order: videasy first
+    // The only currently verified working provider is Videasy. The shield can
+    // move sandboxed providers ahead when the user prioritises popup blocking.
     return ["videasy", "vidsrc", "2embed"];
   },
 
   // Pop-up Shield: when on, sandbox-protected sources are tried before
-  // unprotected ones (Videasy), trading Videasy's catalog/quality for
-  // browser-enforced popup blocking. Off by default — Videasy is the most
-  // reliable source and some users prefer that over ad-free.
+  // unprotected ones (Videasy), trading playback compatibility for browser-
+  // enforced popup blocking. It is opt-in because both currently configured
+  // protected providers reject sandboxed playback for this title.
   getPopupShield() {
     return storage.get("popupShield") === true;
   },
@@ -66,18 +67,17 @@ export const sourceQueue = {
 
   /**
    * Generates a queue of source IDs.
-   * Default: videasy at the front, followed by the remaining priority sources.
-   * With Pop-up Shield on: stable-partitioned so sandbox-protected sources
-   * come first (in priority order) and unprotected ones (videasy) go last.
+   * Default: the verified working provider first. With Pop-up Shield enabled,
+   * only sandbox-compatible sources are attempted.
+   * With Pop-up Shield on: only sandbox-protected sources are eligible.
+   * This is intentional: trying an unprotected provider as a fallback silently
+   * reintroduces the pop-up/tab-hijack problem that the setting promises to stop.
    */
   getQueue(tmdbId, season, episode) {
     const order = [...this.getPriorityOrder()];
     if (this.getPopupShield()) {
-      const protectedSrcs = order.filter((s) => sourceIsProtected(s));
-      const unprotectedSrcs = order.filter((s) => !sourceIsProtected(s));
-      return [...protectedSrcs, ...unprotectedSrcs];
+      return order.filter((s) => sourceIsProtected(s));
     }
-    const filtered = order.filter((s) => s !== "videasy");
-    return ["videasy", ...filtered];
+    return order;
   },
 };

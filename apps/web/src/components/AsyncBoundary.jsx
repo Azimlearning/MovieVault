@@ -22,6 +22,7 @@ export default function AsyncBoundary({
   state,
   onRetry,
   emptyComponent,
+  loadingComponent,
   children,
 }) {
   const { loading, error, empty } = normalizeState(state);
@@ -70,6 +71,7 @@ export default function AsyncBoundary({
   };
 
   if (loading) {
+    if (loadingComponent) return loadingComponent;
     return (
       <div className="loader" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div className="spinner" />

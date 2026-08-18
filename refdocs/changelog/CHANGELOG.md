@@ -16,6 +16,39 @@
 
 ## [Unreleased]
 
+### 2026-08-18 — Addressable URLs, unified player chrome, and playback recovery
+- **Changed:** Added `apps/web/src/utils/router.js` and wired `App.jsx` navigation to the History API, so every screen has a real address and Back/Forward/reload/share behave normally; deep links land on the title page and keep their slug, and detail pages name the tab once TMDB resolves. Grouped MovieVault's own player buttons into left/right clusters in `MoviePage`/`TVPage` (they had all been absolutely positioned at the same `top/right` and stacked on each other), kept them available in fullscreen and on touch. Added `utils/sourceHealth.js` and `components/PlayerTroubleBar.jsx`: a delayed, dismissible recovery offer with a probe-backed reason a provider showed nothing.
+- **Decided:** Browser history replaces the in-app `navStack`, with per-entry `selected` objects held in a module map so Back restores the exact object rather than a re-fetch stub; the initial URL is never rewritten, so a shared link keeps its slug. Custom transport controls (play/seek/subtitles) remain out of scope for cross-origin embeds — the parent page has no access to them; only the app-owned native `<video>` player can have them. A no-cors probe is used to separate a network-level block (DNS/ad blocker/ISP) from an embed refusal, because the iframe `load` event fires identically in both cases.
+- **Deviations:** No app rebuild. The reported friend-facing failures are provider/network refusals rather than app bugs, so the work targeted recovery and diagnosis instead of replacing the player; the Videasy sandbox fix those screenshots appear to show is already in `origin/main` and needs one confirmation on their device.
+- **Also in this session (Phases 2–3):** Added a post-play "More like this" card for films (raised by the 100% mark, the only completion signal a cross-origin embed leaves us). Made the primary CTAs state-aware — `Resume · 1h 12m left` on movies, a new `Resume S2:E4` / `Play S1:E1` button on the TV detail page which previously had no Play CTA at all, and Play/Resume/Watch again on the Home hero. Deep-link addresses now canonicalise their title slug via `replaceState` once TMDB resolves. Added `pickReachableSource()` plus a per-title pre-flight probe in both pages: a provider blocked by DNS/ad blocker/carrier is now routed around automatically, with the switch announced in the feedback overlay.
+- **Known issues / next steps:** Real playback still needs a valid TMDB token and a device/network test; the friend-facing sandbox report needs one confirmation on their device after this deploy.
+
+### 2026-08-18 — Web playback safety, brand mark, and UX research archive
+- **Changed:** Web non-anime playback now defaults to a sandbox-protected source; source priority preserves valid user choices and keeps the popup-prone provider behind Pop-up Shield. Added a reusable MovieVault mark for the sidebar and favicon.
+- **Decided:** A provider that rejects iframe sandboxing cannot safely be made popup-free in the browser. Protected playback is now the default; users may still explicitly disable the shield when compatibility is more important.
+- **Docs:** Moved the streaming UX teardown into `refdocs/research/`, added its index, and created matching plan/execution records.
+- **Verification:** `apps/web` production build passes. Playwright Chromium rendered the preview successfully at 1440×900 and 390×844; real title playback remains an external-provider/device verification item.
+
+### 2026-08-18 — Streaming UX teardown: native player and perceived-performance pass
+- **Changed:** Added a native One Pace control layer with two-step screen lock, tap-to-reveal, double-tap and button ±10-second seeking, 0.5×–1.5× speed selection, and a direct next-episode action. Added a reusable Home skeleton for layout-stable loading.
+- **Decided:** Applied controls only to the app-owned native `<video>` player. Cross-origin movie/TV embeds cannot safely expose equivalent playback controls from the parent page.
+- **Docs:** Audited the teardown checklist: exact resume, Continue Watching, state-aware CTAs, search-as-you-type, recent searches, and TV auto-next were already present; documented the remaining provider/device test boundary.
+- **Verification:** `cd apps/web && npm run build` passes. Native stream interaction requires a valid One Pace source in a subsequent browser/device test.
+
+### 2026-08-18 — Playwright browser smoke test
+- **Changed:** Added the repeatable `test:smoke` Playwright command. The build's `::highlight(...)` notice is a Lightning CSS parser warning; the selector is the valid CSS Highlight API pseudo-element and remains unchanged.
+- **Verification:** Desktop first-run, Skip → home shell, search open/type/close, console-page errors, and 390px first-run horizontal overflow all pass (2/2).
+- **Known issues / next steps:** No production dependency vulnerabilities were found by `npm audit --omit=dev`. Full dependency audit reports five development-toolchain advisories, including Vite 8.0.14; handle that as a separate, compatibility-tested dependency upgrade.
+
+### 2026-08-18 — Deploy web UX and player update
+- **Changed:** Deployed the current `apps/web` worktree to Vercel production (`dpl_AbqHFEuJ9X735xBKQZSQtyM9Z5Pr`) and added a `PLAYWRIGHT_BASE_URL` override so the smoke suite can test a deployment as well as local preview.
+- **Verification:** `https://movie-vault-neon.vercel.app` returns HTTP 200; `/movievault-mark.svg` returns HTTP 200; the deployed-site Playwright smoke suite passes 2/2.
+
+### 2026-08-18 — Fix verified sandboxed-player failure
+- **Changed:** Restored Videasy as the web default and made Pop-up Shield opt-in. The previous protected-first default selected VidSrc, which was proven in Playwright to render the exact "This content can't be embedded in a sandboxed frame" error for TMDB 969681.
+- **Verification:** Unsandboxed playback of Spider-Man: Brand New Day (TMDB 969681) produced a nested video with `paused: false`, `readyState: 4`, and an advancing `currentTime`; the same URL inside MovieVault's exact iframe sandbox produced the provider's sandbox-rejection error page.
+- **Trade-off:** Embedded third-party providers that reject sandboxing cannot be both popup-free and playable. The setting makes the choice explicit rather than silently defaulting to a broken player.
+
 ### 2026-07-08 — Native-player Phase 0 spike (branch `native-player`) — NO-GO on public provider libs
 - **Changed:** `refdocs/execution/EXEC_NATIVE_PLAYER.md` — Phase 0 filled in with the spike method, results table, and a NO-GO decision + options; `refdocs/plans/PLAN_NATIVE_PLAYER.md` status → on hold; both README index tables updated. No app code touched (spike lives in `scratchpad/provider-spike/`, unmerged). **This work is on the `native-player` branch, not `main`.**
 - **Decided:** Ran the provider-success-rate spike that gates the whole native-player plan. `@p-stream/providers` isn't published (P-Stream close-sourced their scrapers — npm 404 + dead custom registry). `@movie-web/providers@2.4.13` *is* installable but its `latest` is frozen at 2025-04-27; against 20 titles (15 movies + 5 TV) with `targets.NATIVE` it resolved **0/20** — a mix of "no stream" (full source list exhausted) and dead-host timeouts. A harness-level Node/undici `AbortSignal` incompat was found and fixed first (fresh Node AbortController per request), so the 0/20 is a real result, not a harness artifact. Conclusion: the architecture (client-side extraction → own `<video>`) is still the only real ad-free path, but no maintained public extractor currently exists, so the build stays gated. Interim answer remains embeds + Pop-up Shield on `main`.
