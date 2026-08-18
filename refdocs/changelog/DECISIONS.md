@@ -173,3 +173,16 @@
 **Why off by default:** Videasy is the most reliable/highest-catalog source; forcing protected-first would degrade playback success for users who don't mind the ads. The shield is stable-partitioned (protected sources keep their relative priority order; only the protected-vs-unprotected split is forced), and the existing failover still falls through to Videasy if the protected sources fail — so enabling it never *removes* a working source, only reprioritizes. Verified with a 5-case unit test against the esbuild-bundled `sourceQueue.js`.
 
 **Trade-off:** protected sources (VidSrc/2Embed) can have a smaller/older catalog and 2Embed is already tagged `unstable`, so shield-on users may hit "all sources failed" on titles Videasy would have played. Mitigated by the manual per-title source switcher in the player, and by the failover fallback to Videasy still being present in the queue (just last).
+
+---
+
+### ADR-017 — The player `<iframe>` is remounted on every source switch (`key={playerSource}`)
+**Decision:** Both web player iframes (`apps/web/src/pages/MoviePage.jsx`, `apps/web/src/pages/TVPage.jsx`) carry `key={playerSource}`, so changing source destroys the old iframe element and creates a new one instead of reusing it.
+
+**Why:** ADR-013 made `sandbox` per-source, which means a source switch can change the `sandbox` attribute and the `src` in the same React commit. An iframe's sandboxing flags are established when the frame navigates, and reusing one element across a sandboxed→unsandboxed switch leaves that ordering up to the browser. When the flags survive the navigation, the user lands on Videasy — a source we deliberately render with **no** sandbox — inside a still-sandboxed frame, and gets Videasy's "Iframe Sandbox Detected" page while the source chip reads "Videasy". Reported by a user on 2026-08-18 with a screenshot showing exactly that combination, on a build whose deployed bundle provably emits no `sandbox` attribute for Videasy (verified by grepping the live `index-*.js`).
+
+**Reachable paths into the bad state (all in-place `setPlayerSource` calls):** the manual source picker; `PlayerTroubleBar`'s "Try another source", which cycles `PLAYER_SOURCES` with a wrap-around and so can land on Videasy from a sandboxed source; and the Phase 3 reachability auto-switch. All three only fire for users whose first source fails — which is why this reproduces for one person and not another on the same build.
+
+**Why a key rather than ordering the props:** prop-application order inside React is not a contract we should depend on, and a fresh element is unambiguous in every browser. The cost is one extra element creation per source switch, on an interaction that already reloads a video.
+
+**Related:** the load-event effect in both pages depends on `playerSource`, so it re-attaches to the new element after the commit; no listeners are stranded.

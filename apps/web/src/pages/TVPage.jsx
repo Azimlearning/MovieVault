@@ -2583,9 +2583,13 @@ export default function TVPage({
                     </button>
                   </div>
                 )}
+                {/* `key={playerSource}` forces a brand-new iframe element on
+                    every source switch, so stale sandbox flags can never carry
+                    into an unsandboxed provider. See ADR-017. */}
                 {isAsync ? (
                   <AsyncBoundary state={allMangaState} onRetry={handleRetryAllManga}>
                     <iframe
+                      key={playerSource}
                       ref={webviewRef}
                       src={
                         pipOpen
@@ -2616,6 +2620,7 @@ export default function TVPage({
                   </AsyncBoundary>
                 ) : (
                   <iframe
+                    key={playerSource}
                     ref={webviewRef}
                     src={
                       pipOpen

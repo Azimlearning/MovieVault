@@ -1633,9 +1633,17 @@ export default function MoviePage({
                 </button>
               </div>
             )}
+            {/* `key={playerSource}` forces a brand-new iframe element on every
+                source switch. An iframe's sandbox flags are fixed when the frame
+                is created and are not reliably re-read when React swaps the
+                `src` and drops the `sandbox` attribute in the same commit, so
+                reusing the element could navigate to an unsandboxed provider
+                (Videasy) while the old flags still applied — which is exactly
+                the provider's "Iframe Sandbox Detected" page. See ADR-017. */}
             {sourceIsAsync(playerSource) ? (
               <AsyncBoundary state={allMangaState} onRetry={handleRetryAllManga}>
                 <iframe
+                  key={playerSource}
                   ref={webviewRef}
                   src={
                     pipOpen
@@ -1662,6 +1670,7 @@ export default function MoviePage({
               </AsyncBoundary>
             ) : (
               <iframe
+                key={playerSource}
                 ref={webviewRef}
                 src={
                   pipOpen

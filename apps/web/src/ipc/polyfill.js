@@ -73,7 +73,15 @@ if (typeof window !== "undefined") {
       deleteSubtitleFile: async () => ({ ok: true }),
       wyzieOpenRedeem: async () => ({ ok: false, error: "Not supported on web" }),
       wyzieValidateKey: async () => ({ ok: true }),
-      openPipWindow: () => {},
+      // The web build has no Electron pop-out window, but a broken embed
+      // still needs a way out: a provider that refuses to run inside our
+      // iframe (X-Frame-Options, or its own "sandbox detected" page) almost
+      // always plays fine as a top-level tab. Called from a click handler, so
+      // popup blockers allow it.
+      openPipWindow: (url) => {
+        if (!url) return;
+        window.open(url, "_blank", "noopener,noreferrer");
+      },
       closePipWindow: () => {},
       getPipWebContentsId: async () => null,
       onPipOpened: () => () => {},
