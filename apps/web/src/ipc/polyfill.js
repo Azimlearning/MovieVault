@@ -1,6 +1,9 @@
 if (typeof window !== "undefined") {
   if (!window.electron) {
     window.electron = {
+      // Marks the browser build synchronously; getPlatform() is a promise and
+      // components need this during render.
+      isWebPolyfill: true,
       getAppVersion: async () => "1.0.0 (Web)",
       getPlatform: async () => "web",
       getDownloads: async () => [],

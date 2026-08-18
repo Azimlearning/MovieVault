@@ -25,6 +25,7 @@ import {
   sourceProgressViaFrames,
   sourceIsAsync,
   sourceSandbox,
+  sourceIsProtected,
   fetchAnilistData,
   cleanAnilistDescription,
   isAnimeContent,
@@ -50,6 +51,7 @@ import {
 import DownloadModal from "../components/DownloadModal";
 import TrailerModal from "../components/TrailerModal";
 import BlockedStatsModal from "../components/BlockedStatsModal";
+import PopupShieldModal from "../components/PopupShieldModal";
 import { useBlockedStats } from "../utils/useBlockedStats";
 import MediaCard from "../components/MediaCard";
 import { storage } from "../utils/storage";
@@ -1753,7 +1755,13 @@ export default function MoviePage({
                   setShowSourceMenu(false);
                   setShowBlockedModal(true);
                 }}
-                title="Blocked ads & trackers"
+                title={
+                  window.electron?.isWebPolyfill
+                    ? sourceIsProtected(playerSource)
+                      ? "Pop-ups blocked on this source"
+                      : "Pop-ups possible on this source"
+                    : "Blocked ads & trackers"
+                }
               >
                 <ShieldBlockIcon />
                 {blockedSession > 0 && (
@@ -2031,14 +2039,31 @@ export default function MoviePage({
         />
       )}
 
-      {showBlockedModal && (
-        <BlockedStatsModal
-          sessionDomains={getBlockedDomains()}
-          sessionTotal={blockedSession}
-          alltimeTotal={blockedAlltime}
-          onClose={() => setShowBlockedModal(false)}
-        />
-      )}
+      {showBlockedModal &&
+        (window.electron?.isWebPolyfill ? (
+          // The browser build cannot block network requests, so reporting a
+          // count here would always read zero. It explains the mechanism and
+          // offers the sandbox trade-off instead.
+          <PopupShieldModal
+            sourceLabel={
+              PLAYER_SOURCES.find((src) => src.id === playerSource)?.label
+            }
+            sourceProtected={sourceIsProtected(playerSource)}
+            shieldOn={sourceQueue.getPopupShield()}
+            onToggleShield={() => {
+              sourceQueue.savePopupShield(!sourceQueue.getPopupShield());
+              setShowBlockedModal(false);
+            }}
+            onClose={() => setShowBlockedModal(false)}
+          />
+        ) : (
+          <BlockedStatsModal
+            sessionDomains={getBlockedDomains()}
+            sessionTotal={blockedSession}
+            alltimeTotal={blockedAlltime}
+            onClose={() => setShowBlockedModal(false)}
+          />
+        ))}
 
       {showDownload && (
         <DownloadModal

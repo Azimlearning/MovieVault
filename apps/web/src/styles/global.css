@@ -5695,3 +5695,79 @@ html[data-win-titlebar][data-maximized] .main {
 .toast-action:hover {
     text-decoration: underline;
 }
+
+/* ── Pop-up shield panel (browser build) ──────────────────────────────────── */
+.shield-modal__body {
+    padding: 4px 18px 18px;
+    overflow-y: auto;
+}
+
+.shield-status {
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12.5px;
+    line-height: 1.45;
+    margin-bottom: 14px;
+}
+
+.shield-status--on {
+    background: rgba(61, 186, 111, .12);
+    border: 1px solid rgba(61, 186, 111, .45);
+    color: #7fd8a4;
+}
+
+.shield-status--off {
+    background: rgba(229, 9, 20, .1);
+    border: 1px solid rgba(229, 9, 20, .4);
+    color: #ff8b90;
+}
+
+.shield-modal__text {
+    margin: 0 0 12px;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--text2, #cfcfcf);
+}
+
+.shield-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px;
+    margin: 4px 0 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface3, rgba(255, 255, 255, .04));
+    cursor: pointer;
+}
+
+.shield-toggle input {
+    margin-top: 2px;
+    accent-color: var(--accent, #f5a623);
+    flex-shrink: 0;
+}
+
+.shield-toggle strong {
+    display: block;
+    font-size: 13px;
+    color: var(--text, #fff);
+    margin-bottom: 2px;
+}
+
+.shield-toggle__hint {
+    display: block;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text3, #9a9a9a);
+}
+
+.shield-modal__list {
+    margin: 0;
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text3, #9a9a9a);
+}

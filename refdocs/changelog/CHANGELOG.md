@@ -16,6 +16,11 @@
 
 ## [Unreleased]
 
+### 2026-08-18 — The web build's shield button now tells the truth about pop-ups
+- **Changed:** In the browser the player's shield button opened `BlockedStatsModal`, which reports ad/tracker requests blocked at the network layer — something only the Electron build can do. In the web build `onBlockedUpdate` is a no-op stub, so that panel always read zero while the user was still getting ad tabs. Added `PopupShieldModal`, shown when `window.electron.isWebPolyfill` is set (a new synchronous marker, since `getPlatform()` is async and the choice happens during render). It states the current source's sandbox status, explains that the transport controls belong to the provider's frame and that a pop-up opened during a real click is allowed by every browser, and offers the Pop-up Shield toggle inline. The button's tooltip now reads "Pop-ups blocked/possible on this source".
+- **Decided:** Do not report protection the build cannot provide. The iframe sandbox is the only lever a parent page has over another site's frame, and the providers that accept it are the ones that most often refuse to play — so the trade-off is surfaced at the point of frustration rather than buried in Settings.
+- **Known issues / next steps:** Genuine ad blocking in the browser needs either a user-installed content blocker or an owned stream (`PLAN_NATIVE_PLAYER`, currently NO-GO).
+
 ### 2026-08-18 — Fix: the recovery pill covered the provider's own controls
 - **Changed:** `.player-trouble` was anchored bottom-left, which put the "Not playing?" pill directly on top of the embedded provider's seek and volume buttons. Moved it to the top edge, horizontally centred and below MovieVault's own chrome row: the bottom of the frame belongs to the provider's transport controls and the top corners to our clusters, so the middle of the top edge is the only strip nothing else owns.
 - **Verification:** Measured against the shipped stylesheet in Chromium — the pill occupies y 59–91 in a 507px frame while the two chrome clusters end at y 45 and y 49, so it overlaps neither and stays clear of the provider's bottom bar.
