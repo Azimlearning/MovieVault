@@ -16,6 +16,11 @@
 
 ## [Unreleased]
 
+### 2026-08-18 — Fix: every TV page crashed on mount (temporal dead zone)
+- **Changed:** `TVPage`'s provider-reachability effect (added in Phase 3) sat above `showFeedback` and `autoSwitchedRef` but named both in its dependency array. Dependency arrays are evaluated during render, so every series page threw `Cannot access '$' before initialization` and hit the error boundary before painting. Moved the effect below both declarations. `MoviePage` was unaffected — there the same effect already sat below its dependencies.
+- **Decided:** The smoke suite only ever mounted a *movie* detail page, which is why this shipped. Added a parameterised regression test that mounts `/tv/...` (two shapes) and `/movie/...` and asserts the error boundary is absent — verified to fail against the broken build and pass against the fix.
+- **Known issues / next steps:** Deployed and confirmed live.
+
 ### 2026-08-18 — Zero-decision paths: hero Play, Play Something, query chips, undo
 - **Changed:** `HeroBanner` had been passing `playDirectly: true` since it was written and **nothing ever consumed it**, so the hero's primary CTA behaved identically to its own "More Info" button. `MoviePage` now opens straight into playback for such a title (as initial state, with the existing age/release render guard still in force) and `TVPage` resumes the episode its Phase 2 `resumeTarget` resolves. Added a **Play Something** button between the hero and the rows: it prefers an unfinished title, else picks at random across Continue Watching, Recommended and both trending pools. Cast names and genre chips on both detail pages now run a search, which only became possible once search had an address. Removing from Continue Watching now offers **Undo** in the toast, restoring the entry, its percentage and its stored position together.
 - **Decided:** Auto-play on `playDirectly` is initial state on movies but an effect on series, because a series' resume episode is only known after an async season fetch — the one place the pattern cannot be avoided, and it carries a scoped lint exception with the reason written down.

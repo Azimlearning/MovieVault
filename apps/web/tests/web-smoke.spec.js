@@ -80,3 +80,26 @@ test("a deep link opens the title page rather than home", async ({ page }) => {
   // surface — which is still the movie page, not the home screen.
   await expect(page.getByText(/TMDB Auth Error/)).toBeVisible();
 });
+
+// A TV deep link shipped broken because the smoke suite only ever mounted a
+// movie page: TVPage's provider-probe effect named two values declared further
+// down the component, so its dependency array hit a temporal dead zone and every
+// series threw "Cannot access '$' before initialization" before painting.
+for (const target of [
+  "/tv/46648/true-detective",
+  "/tv/1399/game-of-thrones?s=2&e=3",
+  "/movie/1061474/f1-the-movie",
+]) {
+  test(`${target} mounts without hitting the error boundary`, async ({ page }) => {
+    await page.goto(`${baseUrl}${target}`, { waitUntil: "networkidle" });
+    const skip = page.getByText("Skip for now");
+    if (await skip.count()) await skip.click();
+
+    await expect(page.getByText("Something went wrong")).toHaveCount(0);
+    await expect(page.getByText(/before initialization/)).toHaveCount(0);
+    // Without a TMDB token the page can only prove it mounted by its own error
+    // surface — which is still the detail page, not a crash.
+    await expect(page.getByText(/TMDB Auth Error/)).toBeVisible();
+    expect(pageErrors).toEqual([]);
+  });
+}

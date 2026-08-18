@@ -845,47 +845,6 @@ export default function TVPage({
     playEpisode(resumeTarget.ep);
   }, [item?.playDirectly, restricted, resumeTarget, playEpisode]);
 
-  useEffect(() => {
-    if (!playing || autoSwitchedRef.current || isAsync || !playerEp) {
-      return undefined;
-    }
-    let active = true;
-    const buildUrl = (id) =>
-      getSourceUrl(id, "tv", item.id, playerEp.season, playerEp.episode);
-
-    probeReachable(buildUrl(playerSource)).then(async (result) => {
-      if (!active || result !== REACHABILITY.BLOCKED) return;
-      const alternatives = PLAYER_SOURCES.filter(
-        (src) => src.id !== playerSource && !src.async,
-      ).map((src) => src.id);
-      const next = await pickReachableSource(alternatives, buildUrl);
-      if (!active || !next) return;
-
-      autoSwitchedRef.current = true;
-      const blockedLabel =
-        PLAYER_SOURCES.find((src) => src.id === playerSource)?.label ?? "Source";
-      const nextLabel =
-        PLAYER_SOURCES.find((src) => src.id === next)?.label ?? next;
-      showFeedback(`${blockedLabel} is blocked here — switched to ${nextLabel}`);
-
-      setFailoverQueue([next]);
-      setCurrentQueueIndex(0);
-      setPlayerSource(next);
-      setFailoverError(false);
-      setWebviewLoading(true);
-      storage.set("playerSource", next);
-      setM3u8Url(null);
-      setInterceptedSubs([]);
-      setResolvedPlayerUrl(null);
-      setResolvingUrl(false);
-      setResolveError(null);
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [playing, playerSource, item.id, playerEp, isAsync, showFeedback]);
-
   const handleManualSkip = useCallback(async () => {
     if (!skipPrompt || !skipTimings?.[skipPrompt]) return;
     const rawEnd = skipTimings[skipPrompt].endTime;
@@ -951,6 +910,47 @@ export default function TVPage({
   useEffect(() => {
     autoSwitchedRef.current = false;
   }, [item.id]);
+
+  useEffect(() => {
+    if (!playing || autoSwitchedRef.current || isAsync || !playerEp) {
+      return undefined;
+    }
+    let active = true;
+    const buildUrl = (id) =>
+      getSourceUrl(id, "tv", item.id, playerEp.season, playerEp.episode);
+
+    probeReachable(buildUrl(playerSource)).then(async (result) => {
+      if (!active || result !== REACHABILITY.BLOCKED) return;
+      const alternatives = PLAYER_SOURCES.filter(
+        (src) => src.id !== playerSource && !src.async,
+      ).map((src) => src.id);
+      const next = await pickReachableSource(alternatives, buildUrl);
+      if (!active || !next) return;
+
+      autoSwitchedRef.current = true;
+      const blockedLabel =
+        PLAYER_SOURCES.find((src) => src.id === playerSource)?.label ?? "Source";
+      const nextLabel =
+        PLAYER_SOURCES.find((src) => src.id === next)?.label ?? next;
+      showFeedback(`${blockedLabel} is blocked here — switched to ${nextLabel}`);
+
+      setFailoverQueue([next]);
+      setCurrentQueueIndex(0);
+      setPlayerSource(next);
+      setFailoverError(false);
+      setWebviewLoading(true);
+      storage.set("playerSource", next);
+      setM3u8Url(null);
+      setInterceptedSubs([]);
+      setResolvedPlayerUrl(null);
+      setResolvingUrl(false);
+      setResolveError(null);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [playing, playerSource, item.id, playerEp, isAsync, showFeedback]);
 
   // The app-owned control has a direct user gesture, unlike controls inside a
   // cross-origin video frame, so browser fullscreen is reliable on Vercel.
