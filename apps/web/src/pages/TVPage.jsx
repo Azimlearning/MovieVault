@@ -10,6 +10,7 @@ import {
 import AsyncBoundary from "../components/AsyncBoundary";
 import PlayerTroubleBar from "../components/PlayerTroubleBar";
 import { canonicaliseTitleSlug } from "../utils/router";
+import { recallPlayback, rememberPlayback } from "../utils/playbackIntent";
 import {
   REACHABILITY,
   pickReachableSource,
@@ -794,6 +795,12 @@ export default function TVPage({
 
   const playEpisode = useCallback(
     (ep) => {
+      rememberPlayback({
+        type: "tv",
+        id: item.id,
+        season: selectedSeason,
+        episode: ep.episode_number,
+      });
       setM3u8Url(null);
       setInterceptedSubs([]);
       setResolvedPlayerUrl(null);
@@ -809,7 +816,7 @@ export default function TVPage({
         episodeName: ep.name,
       });
     },
-    [d, selectedSeason, onHistory],
+    [d, item.id, selectedSeason, onHistory],
   );
 
   // Teardown §4 and §14 P0: a state-aware primary CTA. The detail page had no
@@ -836,16 +843,44 @@ export default function TVPage({
   // A series arrived at with intent to watch — the hero's Play CTA, or Play
   // Something — opens on the episode it would resume. Unlike a film this cannot
   // be an initial state: the episode is only known once the season data lands.
+  //
+  // The same effect reopens the episode that was playing when an ad stole the
+  // tab: coming back is then one Back press, not a Play tap that buys another.
   const autoPlayedRef = useRef(false);
+  const stolenPlayback = useMemo(
+    () => recallPlayback({ type: "tv", id: item?.id }),
+    [item?.id],
+  );
   useEffect(() => {
-    if (autoPlayedRef.current || !item?.playDirectly) return;
-    if (restricted || !resumeTarget) return;
+    if (autoPlayedRef.current || restricted) return;
+
+    let target = null;
+    if (stolenPlayback && currentSeasonEpisodes?.length) {
+      if (stolenPlayback.season === selectedSeason) {
+        target =
+          currentSeasonEpisodes.find(
+            (ep) => ep.episode_number === stolenPlayback.episode,
+          ) || null;
+      }
+    } else if (item?.playDirectly && resumeTarget) {
+      target = resumeTarget.ep;
+    }
+    if (!target) return;
+
     autoPlayedRef.current = true;
     // The target episode depends on an async season fetch, so unlike a film
     // there is no initial state to open from.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    playEpisode(resumeTarget.ep);
-  }, [item?.playDirectly, restricted, resumeTarget, playEpisode]);
+    playEpisode(target);
+  }, [
+    item?.playDirectly,
+    restricted,
+    resumeTarget,
+    playEpisode,
+    stolenPlayback,
+    currentSeasonEpisodes,
+    selectedSeason,
+  ]);
 
   const handleManualSkip = useCallback(async () => {
     if (!skipPrompt || !skipTimings?.[skipPrompt]) return;

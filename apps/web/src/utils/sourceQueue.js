@@ -3,6 +3,17 @@ import { sourceIsProtected } from "./api";
 
 const CACHE_PREFIX = "lastGoodSource_";
 
+// Coarse pointer with no hover is the reliable signal for "phone or tablet";
+// user-agent sniffing gets this wrong on every new device.
+function isTouchDevice() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+  } catch {
+    return (navigator.maxTouchPoints || 0) > 0;
+  }
+}
+
 export const sourceQueue = {
   getPriorityOrder() {
     const custom = storage.get("sourcePriority");
@@ -20,7 +31,16 @@ export const sourceQueue = {
   // enforced popup blocking. It is opt-in because both currently configured
   // protected providers reject sandboxed playback for this title.
   getPopupShield() {
-    return storage.get("popupShield") === true;
+    const stored = storage.get("popupShield");
+    if (stored === true || stored === false) return stored;
+
+    // No explicit choice yet, so the default is device-dependent — because the
+    // consequence is. On a desktop an unsandboxed provider opening an ad costs
+    // a tab you close. On a phone the same script navigates the *top-level*
+    // context: MovieVault is replaced by the ad, Back reloads the app, and
+    // pressing Play again is a fresh click worth another ad. That loop has no
+    // exit, so touch devices start protected and can opt out in Settings.
+    return isTouchDevice();
   },
 
   savePopupShield(enabled) {

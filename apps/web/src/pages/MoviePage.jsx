@@ -10,6 +10,7 @@ import {
 import AsyncBoundary from "../components/AsyncBoundary";
 import PlayerTroubleBar from "../components/PlayerTroubleBar";
 import { canonicaliseTitleSlug } from "../utils/router";
+import { recallPlayback, rememberPlayback } from "../utils/playbackIntent";
 import {
   REACHABILITY,
   pickReachableSource,
@@ -96,7 +97,11 @@ export default function MoviePage({
     document.title = `${resolved} — MovieVault`;
     canonicaliseTitleSlug(item?.id, resolved);
   }, [details, item]);
-  const [playing, setPlaying] = useState(() => !!item?.playDirectly);
+  const [playing, setPlaying] = useState(
+    () =>
+      !!item?.playDirectly ||
+      recallPlayback({ type: "movie", id: item?.id }) === true,
+  );
   // Teardown §6.5: the end of a film is the start of the next decision. An
   // embedded provider never tells us it finished, so this is raised by the only
   // completion signal the web build actually has — the user marking 100%.
@@ -1201,8 +1206,9 @@ export default function MoviePage({
     setM3u8Url(null);
     setInterceptedSubs([]);
     setPlaying(true);
+    rememberPlayback({ type: "movie", id: item.id });
     onHistory({ ...d, media_type: "movie" });
-  }, [d, onHistory]);
+  }, [d, item.id, onHistory]);
 
 
   // Intercept fullscreen requests from embedded players (vidsrc / 2embed use
@@ -1298,6 +1304,7 @@ export default function MoviePage({
   // rating and release date, so this cannot open restricted content.
   useEffect(() => {
     if (item?.playDirectly && !restricted && !isUnreleased) {
+      rememberPlayback({ type: "movie", id: item.id });
       onHistory({ ...d, media_type: "movie" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
